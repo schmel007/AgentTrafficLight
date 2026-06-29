@@ -10,8 +10,16 @@ struct AgentTrafficLightApp: App {
                 Text("Nothing needs you 💤")
             } else {
                 ForEach(store.attention) { item in
-                    Button("\(item.icon) [\(item.agent)] \(item.label)") {
+                    Button {
                         store.focus(item)
+                    } label: {
+                        Label {
+                            Text("\(item.icon) \(item.label)")
+                        } icon: {
+                            Image(item.agent == "Codex" ? "CodexLogo" : "ClaudeLogo")
+                                .renderingMode(.original)
+                                .accessibilityLabel(item.agent)
+                        }
                     }
                 }
             }
