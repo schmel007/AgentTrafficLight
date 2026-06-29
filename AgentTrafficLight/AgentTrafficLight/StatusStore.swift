@@ -9,7 +9,7 @@ func pidIsAlive(_ pid: Int32) -> Bool {
 
 final class StatusStore: ObservableObject {
     @Published var label: String = "💤"
-    @Published var lines: [String] = summaryLines(for: Counts())
+    @Published var attention: [AttentionItem] = []
 
     private let dir: URL
     private var timer: Timer?
@@ -23,6 +23,10 @@ final class StatusStore: ObservableObject {
         }
     }
 
+    deinit {
+        timer?.invalidate()
+    }
+
     func refresh() {
         let records = loadRecords()
         let result = aggregate(records, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
@@ -30,11 +34,7 @@ final class StatusStore: ObservableObject {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id).json"))
         }
         label = labelText(for: result.counts)
-        lines = summaryLines(for: result.counts)
-    }
-
-    deinit {
-        timer?.invalidate()
+        attention = result.attention
     }
 
     /// Удаляет лежащие файлы мёртвых сессий (снимает зависшие ⚠️).
@@ -43,6 +43,35 @@ final class StatusStore: ObservableObject {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(r.session_id).json"))
         }
         refresh()
+    }
+
+    /// Фокусирует вкладку iTerm по её session id (часть после ":") через osascript.
+    func focus(_ item: AttentionItem) {
+        guard let iterm = item.iterm,
+              let guid = iterm.split(separator: ":").last.map(String.init),
+              !guid.isEmpty,
+              guid.allSatisfy({ $0.isHexDigit || $0 == "-" }) else { return }
+        let script = """
+        tell application "iTerm2"
+          activate
+          repeat with w in windows
+            repeat with t in tabs of w
+              repeat with s in sessions of t
+                if id of s is "\(guid)" then
+                  select w
+                  select t
+                  select s
+                  return
+                end if
+              end repeat
+            end repeat
+          end repeat
+        end tell
+        """
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", script]
+        try? task.run()
     }
 
     private func loadRecords() -> [SessionRecord] {

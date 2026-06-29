@@ -6,10 +6,18 @@ struct AgentTrafficLightApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            ForEach(store.lines, id: \.self) { Text($0) }
+            if store.attention.isEmpty {
+                Text("Nothing needs you 💤")
+            } else {
+                ForEach(store.attention) { item in
+                    Button("\(item.icon) [\(item.agent)] \(item.label)") {
+                        store.focus(item)
+                    }
+                }
+            }
             Divider()
-            Button("Очистить ⚠️") { store.clearErrors() }
-            Button("Выход") { NSApplication.shared.terminate(nil) }
+            Button("Clear ⚠️") { store.clearErrors() }
+            Button("Quit") { NSApplication.shared.terminate(nil) }
         } label: {
             Text(store.label)
         }
