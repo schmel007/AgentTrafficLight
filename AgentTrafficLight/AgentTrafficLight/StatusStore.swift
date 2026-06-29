@@ -33,6 +33,10 @@ final class StatusStore: ObservableObject {
         lines = summaryLines(for: result.counts)
     }
 
+    deinit {
+        timer?.invalidate()
+    }
+
     /// Удаляет лежащие файлы мёртвых сессий (снимает зависшие ⚠️).
     func clearErrors() {
         for r in loadRecords() where !pidIsAlive(r.pid) {
