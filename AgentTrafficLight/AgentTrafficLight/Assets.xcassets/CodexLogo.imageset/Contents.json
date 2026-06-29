@@ -1,0 +1,7 @@
+{
+  "images" : [
+    { "idiom" : "universal", "filename" : "codex-18.png", "scale" : "1x" },
+    { "idiom" : "universal", "filename" : "codex-36.png", "scale" : "2x" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

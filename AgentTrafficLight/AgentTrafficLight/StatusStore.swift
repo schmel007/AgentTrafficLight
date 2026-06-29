@@ -14,6 +14,13 @@ final class StatusStore: ObservableObject {
     private let dir: URL
     private var timer: Timer?
 
+    private var rawAttention: [AttentionItem] = []   // подписи = имя проекта (из aggregate)
+    private var tabNames: [String: String] = [:]     // GUID вкладки iTerm → имя
+    private var liveTabGUIDs: Set<String> = []        // GUID открытых сейчас вкладок iTerm
+    private var hasTabData = false                    // получали ли валидный снимок вкладок
+    private var queryingNames = false
+    private var lastNamesQuery: TimeInterval = 0
+
     init(dir: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/agent-traffic", isDirectory: true)) {
         self.dir = dir
@@ -29,28 +36,28 @@ final class StatusStore: ObservableObject {
 
     func refresh() {
         let records = loadRecords()
-        let result = aggregate(records, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
-        for id in result.idsToDelete {
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id).json"))
-        }
+        // 1) модель «одна вкладка iTerm = одна запись»: дедуп + чистка закрытых вкладок
+        let reconciled = reconcileByTab(records, liveGUIDs: liveTabGUIDs, hasTabData: hasTabData,
+                                        now: Date().timeIntervalSince1970)
+        for id in reconciled.deleteIds { deleteFile(id) }
+        // 2) счётчики/attention + pid-живость и TTL (для записей без вкладки)
+        let result = aggregate(reconciled.kept, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
+        for id in result.idsToDelete { deleteFile(id) }
         label = labelText(for: result.counts)
-        attention = result.attention
+        rawAttention = result.attention
+        attention = applyTabNames(rawAttention)
+        if !records.isEmpty { maybeRefreshTabNames() }
     }
 
     /// Удаляет лежащие файлы мёртвых сессий (снимает зависшие ⚠️).
     func clearErrors() {
-        for r in loadRecords() where !pidIsAlive(r.pid) {
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(r.session_id).json"))
-        }
+        for r in loadRecords() where !pidIsAlive(r.pid) { deleteFile(r.session_id) }
         refresh()
     }
 
-    /// Фокусирует вкладку iTerm по её session id (часть после ":") через osascript.
+    /// Фокусирует вкладку iTerm по её session id через osascript.
     func focus(_ item: AttentionItem) {
-        guard let iterm = item.iterm,
-              let guid = iterm.split(separator: ":").last.map(String.init),
-              !guid.isEmpty,
-              guid.allSatisfy({ $0.isHexDigit || $0 == "-" }) else { return }
+        guard let guid = itermGUID(item.iterm) else { return }
         let script = """
         tell application "iTerm2"
           activate
@@ -68,10 +75,99 @@ final class StatusStore: ObservableObject {
           end repeat
         end tell
         """
+        runOsascript(script)
+    }
+
+    // MARK: - имена и живость вкладок iTerm
+
+    private func applyTabNames(_ items: [AttentionItem]) -> [AttentionItem] {
+        items.map { item in
+            var i = item
+            if let guid = itermGUID(item.iterm), let name = tabNames[guid], !name.isEmpty {
+                i.label = name
+            }
+            return i
+        }
+    }
+
+    /// Асинхронно (вне main) опрашивает iTerm о вкладках, не чаще раза в ~4с.
+    private func maybeRefreshTabNames() {
+        let now = Date().timeIntervalSince1970
+        guard !queryingNames, now - lastNamesQuery > 4 else { return }
+        queryingNames = true
+        lastNamesQuery = now
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let map = StatusStore.queryITermTabNames()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.queryingNames = false
+                if let map {
+                    self.tabNames = map
+                    self.liveTabGUIDs = Set(map.keys)
+                    self.hasTabData = true   // iTerm ответил (даже 0 вкладок → можно чистить)
+                    self.refresh()           // снимок свежий → сразу применить дедуп/чистку/имена
+                } else {
+                    self.hasTabData = false  // osascript не сработал / нет разрешения → откат на pid
+                }
+            }
+        }
+    }
+
+    /// nil → osascript не сработал (нет разрешения/iTerm недоступен); пустой словарь →
+    /// iTerm ответил, но открытых сессий нет.
+    private static func queryITermTabNames() -> [String: String]? {
+        let script = """
+        tell application "iTerm2"
+          set out to ""
+          repeat with w in windows
+            repeat with t in tabs of w
+              repeat with s in sessions of t
+                set out to out & (id of s) & tab & (name of s) & linefeed
+              end repeat
+            end repeat
+          end repeat
+          return out
+        end tell
+        """
+        guard let output = runOsascriptCapturing(script) else { return nil }
+        var map: [String: String] = [:]
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: "\t", maxSplits: 1)
+            if parts.count == 2 {
+                map[String(parts[0])] = String(parts[1]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return map
+    }
+
+    private func runOsascript(_ script: String) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         task.arguments = ["-e", script]
         try? task.run()
+    }
+
+    private static func runOsascriptCapturing(_ script: String) -> String? {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", script]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice   // не копим stderr → нет deadlock
+        do { try task.run() } catch { return nil }
+        // сторож: если osascript завис (диалог Automation / зависание iTerm) — убить через 5с,
+        // иначе фоновый поток и флаг queryingNames застрянут навсегда
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
+            if task.isRunning { task.terminate() }
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        guard task.terminationStatus == 0 else { return nil }   // ошибка/нет разрешения/убит сторожем
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func deleteFile(_ sessionId: String) {
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(sessionId).json"))
     }
 
     private func loadRecords() -> [SessionRecord] {

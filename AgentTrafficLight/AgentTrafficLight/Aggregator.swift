@@ -22,7 +22,7 @@ struct AttentionItem: Equatable, Identifiable {
     let id: String        // session_id
     let icon: String      // 🔴 | 🟡 | ⚠️
     let agent: String     // Claude | Codex
-    let label: String     // имя папки проекта (basename cwd)
+    var label: String     // имя вкладки iTerm, иначе имя папки проекта (basename cwd)
     let iterm: String?     // ITERM_SESSION_ID для фокуса вкладки, nil если неизвестен
 }
 
@@ -100,4 +100,52 @@ func labelText(for c: Counts) -> String {
     if c.working > 0 { parts.append("🟢\(c.working)") }
     if c.error > 0   { parts.append("⚠️\(c.error)") }
     return parts.isEmpty ? "💤" : parts.joined(separator: " ")
+}
+
+/// GUID вкладки iTerm = часть ITERM_SESSION_ID после ":" (совпадает с `id of session`).
+func itermGUID(_ iterm: String?) -> String? {
+    guard let g = iterm?.split(separator: ":").last.map(String.init),
+          !g.isEmpty,
+          g.allSatisfy({ $0.isHexDigit || $0 == "-" }) else { return nil }
+    return g
+}
+
+struct TabReconcileResult: Equatable {
+    var kept: [SessionRecord] = []
+    var deleteIds: [String] = []
+}
+
+/// Сводит записи к модели «одна запись = одна открытая вкладка iTerm».
+/// - запись с GUID закрытой вкладки → на удаление (чистка Codex без SessionEnd);
+/// - несколько записей одной живой вкладки → оставить свежую по `ts` (проигравшие
+///   просто исключаются из показа, файлы не трогаем — уйдут при закрытии вкладки);
+/// - запись без GUID → пропускается как есть (дальше решает pid-живость).
+/// Если снимка вкладок нет (`hasTabData == false`, iTerm не виден/нет разрешения) —
+/// ничего не фильтруем, откат на pid-поведение.
+/// `gracePeriod`: запись с GUID не в снапшоте, но свежее grace, НЕ удаляется — снапшот
+/// мог отстать от только что открытой вкладки. Дефолт 12с с запасом покрывает худший лаг:
+/// throttle опроса (~4с) + время osascript до watchdog (до 5с).
+func reconcileByTab(_ records: [SessionRecord], liveGUIDs: Set<String>, hasTabData: Bool,
+                    now: TimeInterval, gracePeriod: TimeInterval = 12) -> TabReconcileResult {
+    guard hasTabData else { return TabReconcileResult(kept: records, deleteIds: []) }
+    var result = TabReconcileResult()
+    var byTab: [String: SessionRecord] = [:]
+    for r in records {
+        guard let g = itermGUID(r.iterm) else { result.kept.append(r); continue }
+        if !liveGUIDs.contains(g) {
+            if now - TimeInterval(r.ts) > gracePeriod {
+                result.deleteIds.append(r.session_id)   // вкладка закрыта
+            } else {
+                result.kept.append(r)                    // слишком свежая — снапшот мог отстать
+            }
+            continue
+        }
+        if let cur = byTab[g] {
+            if r.ts >= cur.ts { byTab[g] = r }
+        } else {
+            byTab[g] = r
+        }
+    }
+    result.kept.append(contentsOf: byTab.values)
+    return result
 }
