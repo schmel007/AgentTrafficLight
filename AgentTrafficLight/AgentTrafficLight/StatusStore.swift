@@ -152,8 +152,13 @@ final class StatusStore: ObservableObject {
         task.arguments = ["-e", script]
         let pipe = Pipe()
         task.standardOutput = pipe
-        task.standardError = Pipe()
+        task.standardError = FileHandle.nullDevice   // не копим stderr → нет deadlock
         do { try task.run() } catch { return nil }
+        // сторож: если osascript завис (диалог Automation / зависание iTerm) — убить через 5с,
+        // иначе фоновый поток и флаг queryingNames застрянут навсегда
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
+            if task.isRunning { task.terminate() }
+        }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         task.waitUntilExit()
         return String(data: data, encoding: .utf8)
