@@ -25,9 +25,12 @@ PID="${AGENT_TRAFFIC_PID:-$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')}"
 [ -z "$PID" ] && PID=0
 TS="$(date +%s)"
 
+# Атомарная запись: temp + mv (rename), чтобы консьюмер не прочитал полуфайл
+TMP="$FILE.tmp.$$"
 jq -n \
   --arg sid "$SID" \
   --arg state "$STATE" \
   --argjson pid "${PID:-0}" \
   --argjson ts "$TS" \
-  '{session_id:$sid, state:$state, pid:$pid, ts:$ts}' > "$FILE"
+  '{session_id:$sid, state:$state, pid:$pid, ts:$ts}' > "$TMP"
+mv -f "$TMP" "$FILE"
