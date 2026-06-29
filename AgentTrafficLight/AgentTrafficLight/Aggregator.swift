@@ -123,9 +123,10 @@ struct TabReconcileResult: Equatable {
 /// Если снимка вкладок нет (`hasTabData == false`, iTerm не виден/нет разрешения) —
 /// ничего не фильтруем, откат на pid-поведение.
 /// `gracePeriod`: запись с GUID не в снапшоте, но свежее grace, НЕ удаляется — снапшот
-/// мог отстать от только что открытой вкладки (опрос раз в ~4с).
+/// мог отстать от только что открытой вкладки. Дефолт 12с с запасом покрывает худший лаг:
+/// throttle опроса (~4с) + время osascript до watchdog (до 5с).
 func reconcileByTab(_ records: [SessionRecord], liveGUIDs: Set<String>, hasTabData: Bool,
-                    now: TimeInterval, gracePeriod: TimeInterval = 6) -> TabReconcileResult {
+                    now: TimeInterval, gracePeriod: TimeInterval = 12) -> TabReconcileResult {
     guard hasTabData else { return TabReconcileResult(kept: records, deleteIds: []) }
     var result = TabReconcileResult()
     var byTab: [String: SessionRecord] = [:]

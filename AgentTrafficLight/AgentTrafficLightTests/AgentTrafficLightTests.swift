@@ -97,6 +97,14 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(r.deleteIds, [])
     }
 
+    func test_reconcile_default_grace_covers_query_lag() {
+        // запись возрастом 9с (худший лаг: throttle ~4с + watchdog ~5с) не должна удаляться при дефолтном grace
+        let recs = [rec("x","working",1, ts: 0, iterm: "w0:AAAA")]
+        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: true, now: 9)
+        XCTAssertEqual(r.kept.map(\.session_id), ["x"])
+        XCTAssertEqual(r.deleteIds, [])
+    }
+
     func test_reconcile_dedup_same_tab_keeps_newer() {
         let recs = [rec("old","done",1, ts: 10, iterm: "w0:AAAA"),
                     rec("new","working",2, ts: 20, iterm: "w0:AAAA")]
