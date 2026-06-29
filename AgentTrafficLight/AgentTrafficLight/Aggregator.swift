@@ -22,7 +22,7 @@ struct AttentionItem: Equatable, Identifiable {
     let id: String        // session_id
     let icon: String      // 🔴 | 🟡 | ⚠️
     let agent: String     // Claude | Codex
-    let label: String     // имя папки проекта (basename cwd)
+    var label: String     // имя вкладки iTerm, иначе имя папки проекта (basename cwd)
     let iterm: String?     // ITERM_SESSION_ID для фокуса вкладки, nil если неизвестен
 }
 
