@@ -74,6 +74,15 @@ final class AggregatorTests: XCTestCase {
                        "🔴2 🟡1 🟢3 ⚠️1")
     }
 
+    func test_cleanTabName_strips_badge_and_truncates() {
+        XCTAssertEqual(cleanTabName("✳ Проверить", maxLen: 50), "Проверить")
+        let t = cleanTabName("Проверить журналы нагрузки MacBook (python)", maxLen: 22)
+        XCTAssertLessThanOrEqual(t.count, 22)
+        XCTAssertTrue(t.hasSuffix("…"))
+        XCTAssertTrue(t.hasPrefix("Проверить"))
+        XCTAssertEqual(cleanTabName("Fix bug", maxLen: 22), "Fix bug")
+    }
+
     // MARK: reconcileByTab
 
     func test_reconcile_disabled_without_tabdata() {

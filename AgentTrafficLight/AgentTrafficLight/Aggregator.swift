@@ -102,6 +102,19 @@ func labelText(for c: Counts) -> String {
     return parts.isEmpty ? "💤" : parts.joined(separator: " ")
 }
 
+/// Чистит имя вкладки iTerm для меню: убирает ведущий badge-символ (✳/●/…),
+/// обрезает до `maxLen` символов с «…» — чтобы ширина окна была фиксированной.
+func cleanTabName(_ raw: String, maxLen: Int = 22) -> String {
+    var s = raw.trimmingCharacters(in: .whitespaces)
+    if let firstAlnum = s.firstIndex(where: { $0.isLetter || $0.isNumber }) {
+        s = String(s[firstAlnum...])
+    }
+    if s.count > maxLen {
+        s = String(s.prefix(maxLen - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+    return s
+}
+
 /// GUID вкладки iTerm = часть ITERM_SESSION_ID после ":" (совпадает с `id of session`).
 func itermGUID(_ iterm: String?) -> String? {
     guard let g = iterm?.split(separator: ":").last.map(String.init),
