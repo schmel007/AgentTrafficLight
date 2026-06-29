@@ -127,7 +127,9 @@ struct TabReconcileResult: Equatable {
 /// throttle опроса (~4с) + время osascript до watchdog (до 5с).
 func reconcileByTab(_ records: [SessionRecord], liveGUIDs: Set<String>, hasTabData: Bool,
                     now: TimeInterval, gracePeriod: TimeInterval = 12) -> TabReconcileResult {
-    guard hasTabData else { return TabReconcileResult(kept: records, deleteIds: []) }
+    // Предохранитель: снимок есть, но пустой (сломанный парсинг / iTerm без вкладок) —
+    // НИЧЕГО не удаляем, иначе один сбой снапшота сотрёт все живые сессии. Откат на pid.
+    guard hasTabData, !liveGUIDs.isEmpty else { return TabReconcileResult(kept: records, deleteIds: []) }
     var result = TabReconcileResult()
     var byTab: [String: SessionRecord] = [:]
     for r in records {
