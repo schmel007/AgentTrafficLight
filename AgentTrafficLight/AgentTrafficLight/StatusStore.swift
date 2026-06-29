@@ -37,7 +37,8 @@ final class StatusStore: ObservableObject {
     func refresh() {
         let records = loadRecords()
         // 1) модель «одна вкладка iTerm = одна запись»: дедуп + чистка закрытых вкладок
-        let reconciled = reconcileByTab(records, liveGUIDs: liveTabGUIDs, hasTabData: hasTabData)
+        let reconciled = reconcileByTab(records, liveGUIDs: liveTabGUIDs, hasTabData: hasTabData,
+                                        now: Date().timeIntervalSince1970)
         for id in reconciled.deleteIds { deleteFile(id) }
         // 2) счётчики/attention + pid-живость и TTL (для записей без вкладки)
         let result = aggregate(reconciled.kept, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
@@ -100,15 +101,21 @@ final class StatusStore: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.queryingNames = false
-                self.tabNames = map
-                self.liveTabGUIDs = Set(map.keys)
-                self.hasTabData = !map.isEmpty
-                self.refresh()   // снимок свежий → сразу применить дедуп/чистку/имена
+                if let map {
+                    self.tabNames = map
+                    self.liveTabGUIDs = Set(map.keys)
+                    self.hasTabData = true   // iTerm ответил (даже 0 вкладок → можно чистить)
+                    self.refresh()           // снимок свежий → сразу применить дедуп/чистку/имена
+                } else {
+                    self.hasTabData = false  // osascript не сработал / нет разрешения → откат на pid
+                }
             }
         }
     }
 
-    private static func queryITermTabNames() -> [String: String] {
+    /// nil → osascript не сработал (нет разрешения/iTerm недоступен); пустой словарь →
+    /// iTerm ответил, но открытых сессий нет.
+    private static func queryITermTabNames() -> [String: String]? {
         let script = """
         tell application "iTerm2"
           set out to ""
@@ -122,7 +129,7 @@ final class StatusStore: ObservableObject {
           return out
         end tell
         """
-        guard let output = runOsascriptCapturing(script) else { return [:] }
+        guard let output = runOsascriptCapturing(script) else { return nil }
         var map: [String: String] = [:]
         for line in output.split(separator: "\n") {
             let parts = line.split(separator: "\t", maxSplits: 1)
@@ -155,6 +162,7 @@ final class StatusStore: ObservableObject {
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         task.waitUntilExit()
+        guard task.terminationStatus == 0 else { return nil }   // ошибка/нет разрешения/убит сторожем
         return String(data: data, encoding: .utf8)
     }
 

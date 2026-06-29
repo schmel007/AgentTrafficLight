@@ -78,29 +78,36 @@ final class AggregatorTests: XCTestCase {
 
     func test_reconcile_disabled_without_tabdata() {
         let recs = [rec("a","done",1, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: false)
+        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: false, now: 100)
         XCTAssertEqual(r.kept.map(\.session_id), ["a"])
         XCTAssertEqual(r.deleteIds, [])
     }
 
     func test_reconcile_drops_closed_tab() {
-        let recs = [rec("a","done",1, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: ["BBBB"], hasTabData: true)
+        let recs = [rec("a","done",1, ts: 0, iterm: "w0:AAAA")]
+        let r = reconcileByTab(recs, liveGUIDs: ["BBBB"], hasTabData: true, now: 100, gracePeriod: 6)
         XCTAssertEqual(r.kept, [])
-        XCTAssertEqual(r.deleteIds, ["a"])
+        XCTAssertEqual(r.deleteIds, ["a"])   // age 100 > grace 6 → закрытая вкладка
+    }
+
+    func test_reconcile_keeps_new_record_within_grace() {
+        let recs = [rec("fresh","working",1, ts: 98, iterm: "w0:AAAA")]   // нет в снапшоте, но свежая
+        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: true, now: 100, gracePeriod: 6)
+        XCTAssertEqual(r.kept.map(\.session_id), ["fresh"])   // age 2 < 6 → не удаляем
+        XCTAssertEqual(r.deleteIds, [])
     }
 
     func test_reconcile_dedup_same_tab_keeps_newer() {
         let recs = [rec("old","done",1, ts: 10, iterm: "w0:AAAA"),
                     rec("new","working",2, ts: 20, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: ["AAAA"], hasTabData: true)
+        let r = reconcileByTab(recs, liveGUIDs: ["AAAA"], hasTabData: true, now: 100, gracePeriod: 6)
         XCTAssertEqual(r.kept.map(\.session_id), ["new"])
         XCTAssertEqual(r.deleteIds, [])      // проигравший по ts не удаляется
     }
 
     func test_reconcile_keeps_records_without_guid() {
         let recs = [rec("a","working",1)]    // нет iterm
-        let r = reconcileByTab(recs, liveGUIDs: ["AAAA"], hasTabData: true)
+        let r = reconcileByTab(recs, liveGUIDs: ["AAAA"], hasTabData: true, now: 100, gracePeriod: 6)
         XCTAssertEqual(r.kept.map(\.session_id), ["a"])
         XCTAssertEqual(r.deleteIds, [])
     }

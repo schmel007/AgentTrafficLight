@@ -122,13 +122,23 @@ struct TabReconcileResult: Equatable {
 /// - запись без GUID → пропускается как есть (дальше решает pid-живость).
 /// Если снимка вкладок нет (`hasTabData == false`, iTerm не виден/нет разрешения) —
 /// ничего не фильтруем, откат на pid-поведение.
-func reconcileByTab(_ records: [SessionRecord], liveGUIDs: Set<String>, hasTabData: Bool) -> TabReconcileResult {
+/// `gracePeriod`: запись с GUID не в снапшоте, но свежее grace, НЕ удаляется — снапшот
+/// мог отстать от только что открытой вкладки (опрос раз в ~4с).
+func reconcileByTab(_ records: [SessionRecord], liveGUIDs: Set<String>, hasTabData: Bool,
+                    now: TimeInterval, gracePeriod: TimeInterval = 6) -> TabReconcileResult {
     guard hasTabData else { return TabReconcileResult(kept: records, deleteIds: []) }
     var result = TabReconcileResult()
     var byTab: [String: SessionRecord] = [:]
     for r in records {
         guard let g = itermGUID(r.iterm) else { result.kept.append(r); continue }
-        if !liveGUIDs.contains(g) { result.deleteIds.append(r.session_id); continue }
+        if !liveGUIDs.contains(g) {
+            if now - TimeInterval(r.ts) > gracePeriod {
+                result.deleteIds.append(r.session_id)   // вкладка закрыта
+            } else {
+                result.kept.append(r)                    // слишком свежая — снапшот мог отстать
+            }
+            continue
+        }
         if let cur = byTab[g] {
             if r.ts >= cur.ts { byTab[g] = r }
         } else {
