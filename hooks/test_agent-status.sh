@@ -25,4 +25,8 @@ echo '{"session_id":"sess-1"}' | AGENT_TRAFFIC_DIR="$TMP" sh "$SCRIPT" end
 printf '' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_SID=sess-2 AGENT_TRAFFIC_PID=1 sh "$SCRIPT" done
 jq -e '.state=="done" and .session_id=="sess-2"' "$TMP/sess-2.json" >/dev/null || fail "fallback SID не сработал"
 
+# 5) session_id со спецсимволом не ломает JSON
+echo '{"session_id":"a\"b"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=7 sh "$SCRIPT" working
+jq -e '.session_id=="a\"b" and .state=="working"' "$TMP/a\"b.json" >/dev/null || fail "спецсимвол в SID сломал JSON"
+
 echo "ALL PASS"

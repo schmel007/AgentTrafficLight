@@ -25,5 +25,9 @@ PID="${AGENT_TRAFFIC_PID:-$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')}"
 [ -z "$PID" ] && PID=0
 TS="$(date +%s)"
 
-printf '{"session_id":"%s","state":"%s","pid":%s,"ts":%s}\n' \
-  "$SID" "$STATE" "$PID" "$TS" > "$FILE"
+jq -n \
+  --arg sid "$SID" \
+  --arg state "$STATE" \
+  --argjson pid "${PID:-0}" \
+  --argjson ts "$TS" \
+  '{session_id:$sid, state:$state, pid:$pid, ts:$ts}' > "$FILE"
