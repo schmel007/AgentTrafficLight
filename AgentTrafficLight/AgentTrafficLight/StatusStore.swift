@@ -7,14 +7,6 @@ func pidIsAlive(_ pid: Int32) -> Bool {
     return kill(pid, 0) == 0 || errno == EPERM
 }
 
-/// GUID вкладки iTerm = часть ITERM_SESSION_ID после ":" (совпадает с `id of session`).
-private func itermGUID(_ iterm: String?) -> String? {
-    guard let g = iterm?.split(separator: ":").last.map(String.init),
-          !g.isEmpty,
-          g.allSatisfy({ $0.isHexDigit || $0 == "-" }) else { return nil }
-    return g
-}
-
 final class StatusStore: ObservableObject {
     @Published var label: String = "💤"
     @Published var attention: [AttentionItem] = []
@@ -24,6 +16,8 @@ final class StatusStore: ObservableObject {
 
     private var rawAttention: [AttentionItem] = []   // подписи = имя проекта (из aggregate)
     private var tabNames: [String: String] = [:]     // GUID вкладки iTerm → имя
+    private var liveTabGUIDs: Set<String> = []        // GUID открытых сейчас вкладок iTerm
+    private var hasTabData = false                    // получали ли валидный снимок вкладок
     private var queryingNames = false
     private var lastNamesQuery: TimeInterval = 0
 
@@ -42,21 +36,21 @@ final class StatusStore: ObservableObject {
 
     func refresh() {
         let records = loadRecords()
-        let result = aggregate(records, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
-        for id in result.idsToDelete {
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id).json"))
-        }
+        // 1) модель «одна вкладка iTerm = одна запись»: дедуп + чистка закрытых вкладок
+        let reconciled = reconcileByTab(records, liveGUIDs: liveTabGUIDs, hasTabData: hasTabData)
+        for id in reconciled.deleteIds { deleteFile(id) }
+        // 2) счётчики/attention + pid-живость и TTL (для записей без вкладки)
+        let result = aggregate(reconciled.kept, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
+        for id in result.idsToDelete { deleteFile(id) }
         label = labelText(for: result.counts)
         rawAttention = result.attention
         attention = applyTabNames(rawAttention)
-        if !result.attention.isEmpty { maybeRefreshTabNames() }
+        if !records.isEmpty { maybeRefreshTabNames() }
     }
 
     /// Удаляет лежащие файлы мёртвых сессий (снимает зависшие ⚠️).
     func clearErrors() {
-        for r in loadRecords() where !pidIsAlive(r.pid) {
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(r.session_id).json"))
-        }
+        for r in loadRecords() where !pidIsAlive(r.pid) { deleteFile(r.session_id) }
         refresh()
     }
 
@@ -83,7 +77,7 @@ final class StatusStore: ObservableObject {
         runOsascript(script)
     }
 
-    // MARK: - имена вкладок iTerm
+    // MARK: - имена и живость вкладок iTerm
 
     private func applyTabNames(_ items: [AttentionItem]) -> [AttentionItem] {
         items.map { item in
@@ -95,7 +89,7 @@ final class StatusStore: ObservableObject {
         }
     }
 
-    /// Асинхронно (вне main) опрашивает iTerm о именах вкладок, не чаще раза в ~4с.
+    /// Асинхронно (вне main) опрашивает iTerm о вкладках, не чаще раза в ~4с.
     private func maybeRefreshTabNames() {
         let now = Date().timeIntervalSince1970
         guard !queryingNames, now - lastNamesQuery > 4 else { return }
@@ -106,10 +100,10 @@ final class StatusStore: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.queryingNames = false
-                if map != self.tabNames {
-                    self.tabNames = map
-                    self.attention = self.applyTabNames(self.rawAttention)
-                }
+                self.tabNames = map
+                self.liveTabGUIDs = Set(map.keys)
+                self.hasTabData = !map.isEmpty
+                self.refresh()   // снимок свежий → сразу применить дедуп/чистку/имена
             }
         }
     }
@@ -162,6 +156,10 @@ final class StatusStore: ObservableObject {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         task.waitUntilExit()
         return String(data: data, encoding: .utf8)
+    }
+
+    private func deleteFile(_ sessionId: String) {
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(sessionId).json"))
     }
 
     private func loadRecords() -> [SessionRecord] {

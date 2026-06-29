@@ -73,4 +73,35 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(labelText(for: Counts(working: 3, waiting: 2, done: 1, error: 1)),
                        "🔴2 🟡1 🟢3 ⚠️1")
     }
+
+    // MARK: reconcileByTab
+
+    func test_reconcile_disabled_without_tabdata() {
+        let recs = [rec("a","done",1, iterm: "w0:AAAA")]
+        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: false)
+        XCTAssertEqual(r.kept.map(\.session_id), ["a"])
+        XCTAssertEqual(r.deleteIds, [])
+    }
+
+    func test_reconcile_drops_closed_tab() {
+        let recs = [rec("a","done",1, iterm: "w0:AAAA")]
+        let r = reconcileByTab(recs, liveGUIDs: ["BBBB"], hasTabData: true)
+        XCTAssertEqual(r.kept, [])
+        XCTAssertEqual(r.deleteIds, ["a"])
+    }
+
+    func test_reconcile_dedup_same_tab_keeps_newer() {
+        let recs = [rec("old","done",1, ts: 10, iterm: "w0:AAAA"),
+                    rec("new","working",2, ts: 20, iterm: "w0:AAAA")]
+        let r = reconcileByTab(recs, liveGUIDs: ["AAAA"], hasTabData: true)
+        XCTAssertEqual(r.kept.map(\.session_id), ["new"])
+        XCTAssertEqual(r.deleteIds, [])      // проигравший по ts не удаляется
+    }
+
+    func test_reconcile_keeps_records_without_guid() {
+        let recs = [rec("a","working",1)]    // нет iterm
+        let r = reconcileByTab(recs, liveGUIDs: ["AAAA"], hasTabData: true)
+        XCTAssertEqual(r.kept.map(\.session_id), ["a"])
+        XCTAssertEqual(r.deleteIds, [])
+    }
 }
