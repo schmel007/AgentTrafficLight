@@ -19,22 +19,33 @@ struct AggregationResult: Equatable {
     var idsToDelete: [String] = []
 }
 
-/// Сводит записи сессий в счётчики. Мёртвый pid + working = ошибка;
-/// мёртвый pid + done/waiting = штатно закрытая сессия (на удаление).
-func aggregate(_ records: [SessionRecord], isAlive: (Int32) -> Bool) -> AggregationResult {
+/// Сводит записи сессий в счётчики.
+/// - `working`: если `ts` не обновлялся дольше `staleAfter` — сессия давно молчит,
+///   запись удаляется (закрывает фантомный 🟢 при переиспользовании PID); иначе
+///   живой pid → 🟢, мёртвый → ⚠️.
+/// - `done`/`waiting`: живой pid → счёт; мёртвый → штатно закрыта, на удаление.
+/// `now` инъектируется ради чистоты/тестируемости.
+func aggregate(_ records: [SessionRecord],
+               now: TimeInterval,
+               staleAfter: TimeInterval = 3600,
+               isAlive: (Int32) -> Bool) -> AggregationResult {
     var result = AggregationResult()
     for r in records {
-        if isAlive(r.pid) {
-            switch r.state {
-            case "working": result.counts.working += 1
-            case "waiting": result.counts.waiting += 1
-            case "done":    result.counts.done += 1
-            default:        break
+        switch r.state {
+        case "working":
+            if now - TimeInterval(r.ts) > staleAfter {
+                result.idsToDelete.append(r.session_id)
+            } else if isAlive(r.pid) {
+                result.counts.working += 1
+            } else {
+                result.counts.error += 1
             }
-        } else if r.state == "working" {
-            result.counts.error += 1
-        } else {
-            result.idsToDelete.append(r.session_id)
+        case "waiting":
+            if isAlive(r.pid) { result.counts.waiting += 1 } else { result.idsToDelete.append(r.session_id) }
+        case "done":
+            if isAlive(r.pid) { result.counts.done += 1 } else { result.idsToDelete.append(r.session_id) }
+        default:
+            break
         }
     }
     return result

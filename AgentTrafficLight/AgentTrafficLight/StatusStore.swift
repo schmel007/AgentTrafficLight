@@ -25,7 +25,7 @@ final class StatusStore: ObservableObject {
 
     func refresh() {
         let records = loadRecords()
-        let result = aggregate(records, isAlive: pidIsAlive)
+        let result = aggregate(records, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
         for id in result.idsToDelete {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id).json"))
         }
