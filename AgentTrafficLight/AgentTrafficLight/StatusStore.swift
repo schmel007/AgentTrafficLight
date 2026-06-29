@@ -84,7 +84,7 @@ final class StatusStore: ObservableObject {
         items.map { item in
             var i = item
             if let guid = itermGUID(item.iterm), let name = tabNames[guid], !name.isEmpty {
-                i.label = name
+                i.label = cleanTabName(name)
             }
             return i
         }
