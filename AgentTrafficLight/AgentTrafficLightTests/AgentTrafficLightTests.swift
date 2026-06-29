@@ -92,7 +92,7 @@ final class AggregatorTests: XCTestCase {
 
     func test_reconcile_keeps_new_record_within_grace() {
         let recs = [rec("fresh","working",1, ts: 98, iterm: "w0:AAAA")]   // нет в снапшоте, но свежая
-        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: true, now: 100, gracePeriod: 6)
+        let r = reconcileByTab(recs, liveGUIDs: ["BBBB"], hasTabData: true, now: 100, gracePeriod: 6)
         XCTAssertEqual(r.kept.map(\.session_id), ["fresh"])   // age 2 < 6 → не удаляем
         XCTAssertEqual(r.deleteIds, [])
     }
@@ -100,8 +100,16 @@ final class AggregatorTests: XCTestCase {
     func test_reconcile_default_grace_covers_query_lag() {
         // запись возрастом 9с (худший лаг: throttle ~4с + watchdog ~5с) не должна удаляться при дефолтном grace
         let recs = [rec("x","working",1, ts: 0, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: true, now: 9)
+        let r = reconcileByTab(recs, liveGUIDs: ["BBBB"], hasTabData: true, now: 9)
         XCTAssertEqual(r.kept.map(\.session_id), ["x"])
+        XCTAssertEqual(r.deleteIds, [])
+    }
+
+    func test_reconcile_empty_snapshot_is_safe() {
+        // снимок «успешен», но пустой → НИЧЕГО не удаляем (предохранитель против массового стирания)
+        let recs = [rec("a","done",1, ts: 0, iterm: "w0:AAAA")]
+        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: true, now: 1000)
+        XCTAssertEqual(r.kept.map(\.session_id), ["a"])
         XCTAssertEqual(r.deleteIds, [])
     }
 

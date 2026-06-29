@@ -122,7 +122,7 @@ final class StatusStore: ObservableObject {
           repeat with w in windows
             repeat with t in tabs of w
               repeat with s in sessions of t
-                set out to out & (id of s) & tab & (name of s) & linefeed
+                set out to out & (id of s) & (character id 9) & (name of s) & (character id 10)
               end repeat
             end repeat
           end repeat
