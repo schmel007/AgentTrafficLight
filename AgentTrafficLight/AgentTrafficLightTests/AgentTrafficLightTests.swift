@@ -85,55 +85,23 @@ final class AggregatorTests: XCTestCase {
 
     // MARK: reconcileByTab
 
-    func test_reconcile_disabled_without_tabdata() {
-        let recs = [rec("a","done",1, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: false, now: 100)
-        XCTAssertEqual(r.kept.map(\.session_id), ["a"])
-        XCTAssertEqual(r.deleteIds, [])
-    }
-
-    func test_reconcile_drops_closed_tab() {
-        let recs = [rec("a","done",1, ts: 0, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: ["BBBB"], hasTabData: true, now: 100, gracePeriod: 6)
-        XCTAssertEqual(r.kept, [])
-        XCTAssertEqual(r.deleteIds, ["a"])   // age 100 > grace 6 → закрытая вкладка
-    }
-
-    func test_reconcile_keeps_new_record_within_grace() {
-        let recs = [rec("fresh","working",1, ts: 98, iterm: "w0:AAAA")]   // нет в снапшоте, но свежая
-        let r = reconcileByTab(recs, liveGUIDs: ["BBBB"], hasTabData: true, now: 100, gracePeriod: 6)
-        XCTAssertEqual(r.kept.map(\.session_id), ["fresh"])   // age 2 < 6 → не удаляем
-        XCTAssertEqual(r.deleteIds, [])
-    }
-
-    func test_reconcile_default_grace_covers_query_lag() {
-        // запись возрастом 9с (худший лаг: throttle ~4с + watchdog ~5с) не должна удаляться при дефолтном grace
-        let recs = [rec("x","working",1, ts: 0, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: ["BBBB"], hasTabData: true, now: 9)
-        XCTAssertEqual(r.kept.map(\.session_id), ["x"])
-        XCTAssertEqual(r.deleteIds, [])
-    }
-
-    func test_reconcile_empty_snapshot_is_safe() {
-        // снимок «успешен», но пустой → НИЧЕГО не удаляем (предохранитель против массового стирания)
-        let recs = [rec("a","done",1, ts: 0, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: [], hasTabData: true, now: 1000)
-        XCTAssertEqual(r.kept.map(\.session_id), ["a"])
-        XCTAssertEqual(r.deleteIds, [])
-    }
-
-    func test_reconcile_dedup_same_tab_keeps_newer() {
+    func test_dedup_keeps_newest_per_tab() {
         let recs = [rec("old","done",1, ts: 10, iterm: "w0:AAAA"),
-                    rec("new","working",2, ts: 20, iterm: "w0:AAAA")]
-        let r = reconcileByTab(recs, liveGUIDs: ["AAAA"], hasTabData: true, now: 100, gracePeriod: 6)
-        XCTAssertEqual(r.kept.map(\.session_id), ["new"])
-        XCTAssertEqual(r.deleteIds, [])      // проигравший по ts не удаляется
+                    rec("new","working",2, ts: 20, iterm: "w0:AAAA"),
+                    rec("other","done",3, ts: 5, iterm: "w0:BBBB")]
+        let kept = dedupByTab(recs).map(\.session_id).sorted()
+        XCTAssertEqual(kept, ["new","other"])   // одна свежая на вкладку, разные вкладки сохранены
     }
 
-    func test_reconcile_keeps_records_without_guid() {
-        let recs = [rec("a","working",1)]    // нет iterm
-        let r = reconcileByTab(recs, liveGUIDs: ["AAAA"], hasTabData: true, now: 100, gracePeriod: 6)
-        XCTAssertEqual(r.kept.map(\.session_id), ["a"])
-        XCTAssertEqual(r.deleteIds, [])
+    func test_dedup_keeps_records_without_guid() {
+        let recs = [rec("a","working",1), rec("b","done",2)]   // нет iterm
+        let kept = dedupByTab(recs).map(\.session_id).sorted()
+        XCTAssertEqual(kept, ["a","b"])   // без GUID не схлопываются
+    }
+
+    func test_dedup_never_drops_everything() {
+        // дедуп НИКОГДА не возвращает пусто из непустого входа (нет удаления по снимку)
+        let recs = [rec("a","working",1, iterm: "w0:AAAA")]
+        XCTAssertEqual(dedupByTab(recs).map(\.session_id), ["a"])
     }
 }

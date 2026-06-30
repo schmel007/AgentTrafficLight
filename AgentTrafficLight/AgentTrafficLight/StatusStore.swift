@@ -15,9 +15,7 @@ final class StatusStore: ObservableObject {
     private var timer: Timer?
 
     private var rawAttention: [AttentionItem] = []   // подписи = имя проекта (из aggregate)
-    private var tabNames: [String: String] = [:]     // GUID вкладки iTerm → имя
-    private var liveTabGUIDs: Set<String> = []        // GUID открытых сейчас вкладок iTerm
-    private var hasTabData = false                    // получали ли валидный снимок вкладок
+    private var tabNames: [String: String] = [:]     // GUID вкладки iTerm → имя (косметика)
     private var queryingNames = false
     private var lastNamesQuery: TimeInterval = 0
 
@@ -36,13 +34,9 @@ final class StatusStore: ObservableObject {
 
     func refresh() {
         let records = loadRecords()
-        // 1) модель «одна вкладка iTerm = одна запись»: дедуп + чистка закрытых вкладок
-        let reconciled = reconcileByTab(records, liveGUIDs: liveTabGUIDs, hasTabData: hasTabData,
-                                        now: Date().timeIntervalSince1970)
-        for id in reconciled.deleteIds { deleteFile(id) }
-        // 2) счётчики/attention + pid-живость и TTL (для записей без вкладки)
-        let result = aggregate(reconciled.kept, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
-        for id in result.idsToDelete { deleteFile(id) }
+        let deduped = dedupByTab(records)   // одна строка на вкладку; файлы НЕ удаляет
+        let result = aggregate(deduped, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
+        for id in result.idsToDelete { deleteFile(id) }   // только pid-мёртвые done/waiting + working-TTL
         label = labelText(for: result.counts)
         rawAttention = result.attention
         attention = applyTabNames(rawAttention)
@@ -93,7 +87,7 @@ final class StatusStore: ObservableObject {
     /// Асинхронно (вне main) опрашивает iTerm о вкладках, не чаще раза в ~4с.
     private func maybeRefreshTabNames() {
         let now = Date().timeIntervalSince1970
-        guard !queryingNames, now - lastNamesQuery > 4 else { return }
+        guard !queryingNames, now - lastNamesQuery > 10 else { return }
         queryingNames = true
         lastNamesQuery = now
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -101,13 +95,9 @@ final class StatusStore: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.queryingNames = false
-                if let map {
+                if let map {                       // nil → osascript не сработал, оставляем прежние имена
                     self.tabNames = map
-                    self.liveTabGUIDs = Set(map.keys)
-                    self.hasTabData = true   // iTerm ответил (даже 0 вкладок → можно чистить)
-                    self.refresh()           // снимок свежий → сразу применить дедуп/чистку/имена
-                } else {
-                    self.hasTabData = false  // osascript не сработал / нет разрешения → откат на pid
+                    self.attention = self.applyTabNames(self.rawAttention)
                 }
             }
         }
