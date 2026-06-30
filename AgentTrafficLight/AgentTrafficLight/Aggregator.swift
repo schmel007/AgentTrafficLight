@@ -63,6 +63,7 @@ func aggregate(_ records: [SessionRecord],
                 result.idsToDelete.append(r.session_id)
             } else if isAlive(r.pid) {
                 result.counts.working += 1
+                result.attention.append(AttentionItem(id: r.session_id, icon: "🟢", agent: agent, label: label, iterm: r.iterm))
             } else {
                 result.counts.error += 1
                 result.attention.append(AttentionItem(id: r.session_id, icon: "⚠️", agent: agent, label: label, iterm: r.iterm))
@@ -85,8 +86,10 @@ func aggregate(_ records: [SessionRecord],
             break
         }
     }
-    // Детерминированный порядок: сначала 🔴, потом ⚠️, потом 🟡; внутри — по подписи.
-    let rank: (String) -> Int = { $0 == "🔴" ? 0 : ($0 == "⚠️" ? 1 : 2) }
+    // Детерминированный порядок: 🔴, ⚠️, 🟡, потом 🟢 (working — наименее срочное); внутри — по подписи.
+    let rank: (String) -> Int = {
+        switch $0 { case "🔴": return 0; case "⚠️": return 1; case "🟡": return 2; default: return 3 }
+    }
     result.attention.sort { a, b in
         rank(a.icon) != rank(b.icon) ? rank(a.icon) < rank(b.icon) : (a.label != b.label ? a.label < b.label : a.id < b.id)
     }

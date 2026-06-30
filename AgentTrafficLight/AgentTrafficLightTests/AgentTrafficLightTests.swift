@@ -46,12 +46,11 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(r.idsToDelete, [])
     }
 
-    func test_attention_excludes_working_sorted() {
+    func test_attention_includes_all_sorted() {
         let recs = [rec("w","working",1), rec("d","done",2, cwd: "/x/proj"), rec("q","waiting",3, cwd: "/y/api")]
         let r = aggregate(recs, now: 0, isAlive: { _ in true })
-        XCTAssertEqual(r.attention.map(\.id), ["q","d"])      // 🔴 раньше 🟡
-        XCTAssertEqual(r.attention.map(\.icon), ["🔴","🟡"])
-        XCTAssertFalse(r.attention.contains { $0.id == "w" })  // working не в списке
+        XCTAssertEqual(r.attention.map(\.id), ["q","d","w"])         // 🔴, 🟡, 🟢
+        XCTAssertEqual(r.attention.map(\.icon), ["🔴","🟡","🟢"])
     }
 
     func test_attention_agent_and_label() {
