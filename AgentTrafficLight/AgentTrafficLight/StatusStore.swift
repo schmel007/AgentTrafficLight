@@ -43,9 +43,10 @@ final class StatusStore: ObservableObject {
         if !records.isEmpty { maybeRefreshTabNames() }
     }
 
-    /// Удаляет лежащие файлы мёртвых сессий (снимает зависшие ⚠️).
-    func clearErrors() {
-        for r in loadRecords() where !pidIsAlive(r.pid) { deleteFile(r.session_id) }
+    /// Снимает все показанные сейчас строки (🔴/🟡/⚠️): удаляет их файлы. Активные сессии
+    /// пересоздадут файл на следующем событии хука; закрытые/зависшие (Codex без SessionEnd) уйдут.
+    func clearShown() {
+        for item in attention { deleteFile(item.id) }
         refresh()
     }
 
