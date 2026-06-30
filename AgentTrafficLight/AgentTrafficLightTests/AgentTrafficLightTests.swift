@@ -84,23 +84,26 @@ final class AggregatorTests: XCTestCase {
 
     // MARK: reconcileByTab
 
-    func test_dedup_keeps_newest_per_tab() {
+    func test_dedup_keeps_newest_and_marks_losers_stale() {
         let recs = [rec("old","done",1, ts: 10, iterm: "w0:AAAA"),
                     rec("new","working",2, ts: 20, iterm: "w0:AAAA"),
                     rec("other","done",3, ts: 5, iterm: "w0:BBBB")]
-        let kept = dedupByTab(recs).map(\.session_id).sorted()
-        XCTAssertEqual(kept, ["new","other"])   // одна свежая на вкладку, разные вкладки сохранены
+        let r = dedupByTab(recs)
+        XCTAssertEqual(r.kept.map(\.session_id).sorted(), ["new","other"])  // свежая на вкладку + другая вкладка
+        XCTAssertEqual(r.staleIds, ["old"])   // проигравший той же вкладки → на удаление
     }
 
     func test_dedup_keeps_records_without_guid() {
         let recs = [rec("a","working",1), rec("b","done",2)]   // нет iterm
-        let kept = dedupByTab(recs).map(\.session_id).sorted()
-        XCTAssertEqual(kept, ["a","b"])   // без GUID не схлопываются
+        let r = dedupByTab(recs)
+        XCTAssertEqual(r.kept.map(\.session_id).sorted(), ["a","b"])  // без GUID не схлопываются
+        XCTAssertEqual(r.staleIds, [])
     }
 
-    func test_dedup_never_drops_everything() {
-        // дедуп НИКОГДА не возвращает пусто из непустого входа (нет удаления по снимку)
+    func test_dedup_never_drops_winner() {
         let recs = [rec("a","working",1, iterm: "w0:AAAA")]
-        XCTAssertEqual(dedupByTab(recs).map(\.session_id), ["a"])
+        let r = dedupByTab(recs)
+        XCTAssertEqual(r.kept.map(\.session_id), ["a"])
+        XCTAssertEqual(r.staleIds, [])   // единственный — победитель, не удаляется
     }
 }

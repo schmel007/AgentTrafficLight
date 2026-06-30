@@ -34,9 +34,10 @@ final class StatusStore: ObservableObject {
 
     func refresh() {
         let records = loadRecords()
-        let deduped = dedupByTab(records)   // одна строка на вкладку; файлы НЕ удаляет
-        let result = aggregate(deduped, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
-        for id in result.idsToDelete { deleteFile(id) }   // только pid-мёртвые done/waiting + working-TTL
+        let deduped = dedupByTab(records)   // одна строка на вкладку
+        for id in deduped.staleIds { deleteFile(id) }   // чистим вложенные дубли той же вкладки
+        let result = aggregate(deduped.kept, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
+        for id in result.idsToDelete { deleteFile(id) }   // pid-мёртвые done/waiting + working-TTL
         label = labelText(for: result.counts)
         rawAttention = result.attention
         attention = applyTabNames(rawAttention)

@@ -126,20 +126,31 @@ func itermGUID(_ iterm: String?) -> String? {
     return g
 }
 
+struct DedupResult: Equatable {
+    var kept: [SessionRecord] = []
+    var staleIds: [String] = []   // проигравшие дедупа той же вкладки (вложенные дубли) — на удаление
+}
+
 /// Дедуп: одна запись на GUID вкладки iTerm (свежая по `ts`); записи без GUID — как есть.
-/// НИКОГДА не удаляет файлы и НЕ обращается к iTerm — живость/чистка решаются pid/SessionEnd/
-/// TTL в `aggregate`. Так сбой или зависание запроса к iTerm не могут стереть живые сессии
-/// (это и был источник 💤-стирания). Схлопывает вложенные сессии одной вкладки в одну строку.
-func dedupByTab(_ records: [SessionRecord]) -> [SessionRecord] {
+/// Проигравшие той же вкладки (вложенные codex-rescue и пр. дубли) идут в `staleIds` на
+/// удаление — победитель вкладки ВСЕГДА сохраняется, записи без GUID не трогаются, поэтому
+/// «стереть всё» невозможно и нет зависимости от iTerm-запроса (источник прежнего 💤).
+func dedupByTab(_ records: [SessionRecord]) -> DedupResult {
     var byTab: [String: SessionRecord] = [:]
     var noGuid: [SessionRecord] = []
+    var stale: [String] = []
     for r in records {
         guard let g = itermGUID(r.iterm) else { noGuid.append(r); continue }
         if let cur = byTab[g] {
-            if r.ts >= cur.ts { byTab[g] = r }
+            if r.ts >= cur.ts {
+                stale.append(cur.session_id)   // прежний победитель уступил более свежему
+                byTab[g] = r
+            } else {
+                stale.append(r.session_id)     // текущий проиграл
+            }
         } else {
             byTab[g] = r
         }
     }
-    return Array(byTab.values) + noGuid
+    return DedupResult(kept: Array(byTab.values) + noGuid, staleIds: stale)
 }
