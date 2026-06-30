@@ -123,44 +123,20 @@ func itermGUID(_ iterm: String?) -> String? {
     return g
 }
 
-struct TabReconcileResult: Equatable {
-    var kept: [SessionRecord] = []
-    var deleteIds: [String] = []
-}
-
-/// Сводит записи к модели «одна запись = одна открытая вкладка iTerm».
-/// - запись с GUID закрытой вкладки → на удаление (чистка Codex без SessionEnd);
-/// - несколько записей одной живой вкладки → оставить свежую по `ts` (проигравшие
-///   просто исключаются из показа, файлы не трогаем — уйдут при закрытии вкладки);
-/// - запись без GUID → пропускается как есть (дальше решает pid-живость).
-/// Если снимка вкладок нет (`hasTabData == false`, iTerm не виден/нет разрешения) —
-/// ничего не фильтруем, откат на pid-поведение.
-/// `gracePeriod`: запись с GUID не в снапшоте, но свежее grace, НЕ удаляется — снапшот
-/// мог отстать от только что открытой вкладки. Дефолт 12с с запасом покрывает худший лаг:
-/// throttle опроса (~4с) + время osascript до watchdog (до 5с).
-func reconcileByTab(_ records: [SessionRecord], liveGUIDs: Set<String>, hasTabData: Bool,
-                    now: TimeInterval, gracePeriod: TimeInterval = 12) -> TabReconcileResult {
-    // Предохранитель: снимок есть, но пустой (сломанный парсинг / iTerm без вкладок) —
-    // НИЧЕГО не удаляем, иначе один сбой снапшота сотрёт все живые сессии. Откат на pid.
-    guard hasTabData, !liveGUIDs.isEmpty else { return TabReconcileResult(kept: records, deleteIds: []) }
-    var result = TabReconcileResult()
+/// Дедуп: одна запись на GUID вкладки iTerm (свежая по `ts`); записи без GUID — как есть.
+/// НИКОГДА не удаляет файлы и НЕ обращается к iTerm — живость/чистка решаются pid/SessionEnd/
+/// TTL в `aggregate`. Так сбой или зависание запроса к iTerm не могут стереть живые сессии
+/// (это и был источник 💤-стирания). Схлопывает вложенные сессии одной вкладки в одну строку.
+func dedupByTab(_ records: [SessionRecord]) -> [SessionRecord] {
     var byTab: [String: SessionRecord] = [:]
+    var noGuid: [SessionRecord] = []
     for r in records {
-        guard let g = itermGUID(r.iterm) else { result.kept.append(r); continue }
-        if !liveGUIDs.contains(g) {
-            if now - TimeInterval(r.ts) > gracePeriod {
-                result.deleteIds.append(r.session_id)   // вкладка закрыта
-            } else {
-                result.kept.append(r)                    // слишком свежая — снапшот мог отстать
-            }
-            continue
-        }
+        guard let g = itermGUID(r.iterm) else { noGuid.append(r); continue }
         if let cur = byTab[g] {
             if r.ts >= cur.ts { byTab[g] = r }
         } else {
             byTab[g] = r
         }
     }
-    result.kept.append(contentsOf: byTab.values)
-    return result
+    return Array(byTab.values) + noGuid
 }

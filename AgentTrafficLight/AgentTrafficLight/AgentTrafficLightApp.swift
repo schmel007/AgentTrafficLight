@@ -24,7 +24,7 @@ struct AgentTrafficLightApp: App {
                 }
             }
             Divider()
-            Button("Clear ⚠️") { store.clearErrors() }
+            Button("Clear") { store.clearShown() }
             Button("Quit") { NSApplication.shared.terminate(nil) }
         } label: {
             Text(store.label)
