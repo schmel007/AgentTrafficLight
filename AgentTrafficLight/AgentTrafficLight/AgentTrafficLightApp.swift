@@ -7,7 +7,7 @@ struct AgentTrafficLightApp: App {
     var body: some Scene {
         MenuBarExtra {
             if store.attention.isEmpty {
-                Text("Nothing needs you 💤")
+                Text("No active agents 💤")
             } else {
                 ForEach(store.attention) { item in
                     Button {
