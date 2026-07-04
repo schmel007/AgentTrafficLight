@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Darwin
+import AppKit
 
 func pidIsAlive(_ pid: Int32) -> Bool {
     if pid <= 0 { return false }
@@ -10,6 +11,7 @@ func pidIsAlive(_ pid: Int32) -> Bool {
 final class StatusStore: ObservableObject {
     @Published var label: String = "💤"
     @Published var attention: [AttentionItem] = []
+    @Published var diagnostics: DiagnosticsSnapshot = .empty
 
     private let dir: URL
     private var timer: Timer?
@@ -35,18 +37,37 @@ final class StatusStore: ObservableObject {
     }
 
     func refresh() {
-        let records = loadRecords()
+        let now = Date().timeIntervalSince1970
+        let load = loadRecords()
+        let records = load.records
         let visible = filterVisibleTerminalRecords(records,
                                                    liveITermGUIDs: liveITermGUIDs,
                                                    liveITermObservedAt: liveITermObservedAt)
         for id in visible.staleIds { deleteFile(id) }   // Codex Desktop + закрытые iTerm GUID
         let deduped = dedupByTab(visible.kept)   // одна строка на вкладку
         for id in deduped.staleIds { deleteFile(id) }   // чистим вложенные дубли той же вкладки
-        let result = aggregate(deduped.kept, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
+        let result = aggregate(deduped.kept, now: now, isAlive: pidIsAlive)
         for id in result.idsToDelete { deleteFile(id) }   // pid-мёртвые done/waiting + working-TTL
         label = labelText(for: result.counts)
         rawAttention = result.attention
         attention = applyTabNames(rawAttention)
+        diagnostics = DiagnosticsSnapshot(
+            statusDirectory: dir.path,
+            refreshedAt: now,
+            jsonFileCount: load.jsonFileCount,
+            decodedRecordCount: records.count,
+            invalidFileNames: load.invalidFileNames,
+            terminalKeptCount: visible.kept.count,
+            terminalStaleIds: visible.staleIds,
+            dedupedKeptCount: deduped.kept.count,
+            dedupStaleIds: deduped.staleIds,
+            aggregateDeleteIds: result.idsToDelete,
+            counts: result.counts,
+            shownItemCount: result.attention.count,
+            liveITermGUIDCount: liveITermGUIDs?.count,
+            liveITermObservedAt: liveITermObservedAt,
+            tabNameCount: tabNames.count
+        )
         if !records.isEmpty { maybeRefreshTabNames() }
     }
 
@@ -55,6 +76,15 @@ final class StatusStore: ObservableObject {
     func clearShown() {
         for item in attention { deleteFile(item.id) }
         refresh()
+    }
+
+    func copyDiagnostics() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(diagnosticsReport(diagnostics), forType: .string)
+    }
+
+    func openStatusFolder() {
+        NSWorkspace.shared.open(dir)
     }
 
     /// Фокусирует вкладку iTerm по её session id через osascript.
@@ -171,13 +201,31 @@ final class StatusStore: ObservableObject {
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(sessionId).json"))
     }
 
-    private func loadRecords() -> [SessionRecord] {
+    private struct LoadRecordsResult {
+        var records: [SessionRecord]
+        var jsonFileCount: Int
+        var invalidFileNames: [String]
+    }
+
+    private func loadRecords() -> LoadRecordsResult {
         guard let files = try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil) else { return [] }
+            at: dir, includingPropertiesForKeys: nil) else {
+            return LoadRecordsResult(records: [], jsonFileCount: 0, invalidFileNames: [])
+        }
         let decoder = JSONDecoder()
-        return files
-            .filter { $0.pathExtension == "json" }
-            .compactMap { try? Data(contentsOf: $0) }
-            .compactMap { try? decoder.decode(SessionRecord.self, from: $0) }
+        let jsonFiles = files.filter { $0.pathExtension == "json" }
+        var records: [SessionRecord] = []
+        var invalidFileNames: [String] = []
+        for file in jsonFiles {
+            guard let data = try? Data(contentsOf: file),
+                  let record = try? decoder.decode(SessionRecord.self, from: data) else {
+                invalidFileNames.append(file.lastPathComponent)
+                continue
+            }
+            records.append(record)
+        }
+        return LoadRecordsResult(records: records,
+                                 jsonFileCount: jsonFiles.count,
+                                 invalidFileNames: invalidFileNames)
     }
 }

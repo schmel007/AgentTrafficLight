@@ -17,6 +17,30 @@ struct Counts: Equatable {
     var error = 0
 }
 
+struct DiagnosticsSnapshot: Equatable {
+    var statusDirectory: String = ""
+    var refreshedAt: TimeInterval = 0
+    var jsonFileCount = 0
+    var decodedRecordCount = 0
+    var invalidFileNames: [String] = []
+    var terminalKeptCount = 0
+    var terminalStaleIds: [String] = []
+    var dedupedKeptCount = 0
+    var dedupStaleIds: [String] = []
+    var aggregateDeleteIds: [String] = []
+    var counts = Counts()
+    var shownItemCount = 0
+    var liveITermGUIDCount: Int? = nil
+    var liveITermObservedAt: TimeInterval? = nil
+    var tabNameCount = 0
+
+    var removedCount: Int {
+        terminalStaleIds.count + dedupStaleIds.count + aggregateDeleteIds.count
+    }
+
+    static let empty = DiagnosticsSnapshot()
+}
+
 /// Одна активная сессия — строка в выпадающем меню.
 struct AttentionItem: Equatable, Identifiable {
     let id: String        // session_id
@@ -103,6 +127,40 @@ func labelText(for c: Counts) -> String {
     if c.done > 0    { parts.append("🟢\(c.done)") }
     if c.error > 0   { parts.append("⚠️\(c.error)") }
     return parts.isEmpty ? "💤" : parts.joined(separator: " ")
+}
+
+func diagnosticsReport(_ snapshot: DiagnosticsSnapshot) -> String {
+    [
+        "AgentTrafficLight Diagnostics",
+        "refreshedAt: \(diagnosticsTimestamp(snapshot.refreshedAt))",
+        "statusDirectory: \(snapshot.statusDirectory)",
+        "label: \(labelText(for: snapshot.counts))",
+        "jsonFiles: \(snapshot.jsonFileCount)",
+        "decodedRecords: \(snapshot.decodedRecordCount)",
+        "invalidFiles: \(snapshot.invalidFileNames.count)",
+        "terminalFilter.kept: \(snapshot.terminalKeptCount)",
+        "terminalFilter.removed: \(snapshot.terminalStaleIds.count)",
+        "dedup.kept: \(snapshot.dedupedKeptCount)",
+        "dedup.removed: \(snapshot.dedupStaleIds.count)",
+        "aggregate.removed: \(snapshot.aggregateDeleteIds.count)",
+        "shownItems: \(snapshot.shownItemCount)",
+        "iTerm.liveGUIDs: \(snapshot.liveITermGUIDCount.map(String.init) ?? "unknown")",
+        "iTerm.observedAt: \(diagnosticsTimestamp(snapshot.liveITermObservedAt))",
+        "iTerm.tabNames: \(snapshot.tabNameCount)",
+        "invalidFileNames: \(diagnosticsList(snapshot.invalidFileNames))",
+        "terminalFilter.removedIds: \(diagnosticsList(snapshot.terminalStaleIds))",
+        "dedup.removedIds: \(diagnosticsList(snapshot.dedupStaleIds))",
+        "aggregate.removedIds: \(diagnosticsList(snapshot.aggregateDeleteIds))"
+    ].joined(separator: "\n")
+}
+
+private func diagnosticsTimestamp(_ value: TimeInterval?) -> String {
+    guard let value, value > 0 else { return "unknown" }
+    return ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: value))
+}
+
+private func diagnosticsList(_ values: [String]) -> String {
+    values.isEmpty ? "-" : values.sorted().joined(separator: ", ")
 }
 
 /// Чистит имя вкладки iTerm для меню: убирает ведущий badge-символ (✳/●/…),

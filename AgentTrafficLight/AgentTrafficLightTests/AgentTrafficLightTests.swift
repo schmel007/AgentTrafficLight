@@ -74,6 +74,35 @@ final class AggregatorTests: XCTestCase {
                        "🔴2 🟡3 🟢1 ⚠️1")
     }
 
+    func test_diagnostics_report_includes_pipeline_counts() {
+        let snapshot = DiagnosticsSnapshot(
+            statusDirectory: "/tmp/agent-traffic",
+            refreshedAt: 1,
+            jsonFileCount: 4,
+            decodedRecordCount: 3,
+            invalidFileNames: ["bad.json"],
+            terminalKeptCount: 2,
+            terminalStaleIds: ["desktop"],
+            dedupedKeptCount: 1,
+            dedupStaleIds: ["old"],
+            aggregateDeleteIds: ["dead"],
+            counts: Counts(working: 1),
+            shownItemCount: 1,
+            liveITermGUIDCount: 2,
+            liveITermObservedAt: 1,
+            tabNameCount: 2
+        )
+
+        let report = diagnosticsReport(snapshot)
+
+        XCTAssertTrue(report.contains("jsonFiles: 4"))
+        XCTAssertTrue(report.contains("decodedRecords: 3"))
+        XCTAssertTrue(report.contains("invalidFileNames: bad.json"))
+        XCTAssertTrue(report.contains("terminalFilter.removedIds: desktop"))
+        XCTAssertTrue(report.contains("dedup.removedIds: old"))
+        XCTAssertTrue(report.contains("aggregate.removedIds: dead"))
+    }
+
     func test_cleanTabName_strips_badge_and_truncates() {
         XCTAssertEqual(cleanTabName("✳ Проверить", maxLen: 50), "Проверить")
         let t = cleanTabName("Проверить журналы нагрузки MacBook (python)", maxLen: 22)
