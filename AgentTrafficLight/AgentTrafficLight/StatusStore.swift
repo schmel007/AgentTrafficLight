@@ -16,6 +16,8 @@ final class StatusStore: ObservableObject {
 
     private var rawAttention: [AttentionItem] = []   // подписи = имя проекта (из aggregate)
     private var tabNames: [String: String] = [:]     // GUID вкладки iTerm → имя (косметика)
+    private var liveITermGUIDs: Set<String>? = nil   // nil = iTerm не опрошен/недоступен
+    private var liveITermObservedAt: TimeInterval? = nil
     private var queryingNames = false
     private var lastNamesQuery: TimeInterval = 0
 
@@ -34,7 +36,11 @@ final class StatusStore: ObservableObject {
 
     func refresh() {
         let records = loadRecords()
-        let deduped = dedupByTab(records)   // одна строка на вкладку
+        let visible = filterVisibleTerminalRecords(records,
+                                                   liveITermGUIDs: liveITermGUIDs,
+                                                   liveITermObservedAt: liveITermObservedAt)
+        for id in visible.staleIds { deleteFile(id) }   // Codex Desktop + закрытые iTerm GUID
+        let deduped = dedupByTab(visible.kept)   // одна строка на вкладку
         for id in deduped.staleIds { deleteFile(id) }   // чистим вложенные дубли той же вкладки
         let result = aggregate(deduped.kept, now: Date().timeIntervalSince1970, isAlive: pidIsAlive)
         for id in result.idsToDelete { deleteFile(id) }   // pid-мёртвые done/waiting + working-TTL
@@ -92,6 +98,7 @@ final class StatusStore: ObservableObject {
         guard !queryingNames, now - lastNamesQuery > 10 else { return }
         queryingNames = true
         lastNamesQuery = now
+        let queryStartedAt = now
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let map = StatusStore.queryITermTabNames()
             DispatchQueue.main.async {
@@ -99,7 +106,9 @@ final class StatusStore: ObservableObject {
                 self.queryingNames = false
                 if let map {                       // nil → osascript не сработал, оставляем прежние имена
                     self.tabNames = map
-                    self.attention = self.applyTabNames(self.rawAttention)
+                    self.liveITermGUIDs = Set(map.keys)
+                    self.liveITermObservedAt = queryStartedAt
+                    self.refresh()
                 }
             }
         }

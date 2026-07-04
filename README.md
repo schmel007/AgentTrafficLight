@@ -29,6 +29,8 @@ UI приложения — на английском.
    с полями `session_id, state, pid, ts, agent, cwd, iterm` (атомарно: temp + `mv`).
    Ключ файла: `session_id` из payload, иначе `pid-<pid>` (уникальность без коллизий).
    `iterm` = `$ITERM_SESSION_ID` (для фокуса вкладки и дедупа).
+   Codex-события без `$ITERM_SESSION_ID` считаются desktop/не-iTerm контекстом и
+   не записываются, потому что индикатор измеряет именно вкладки iTerm.
 
 2. **Consumer** — приложение (SwiftUI `MenuBarExtra`). Каждые 2 сек читает файлы,
    считает состояния и обновляет меню.
@@ -41,27 +43,30 @@ UI приложения — на английском.
 
 ### Живость и чистка (важно)
 
-Живость определяется **надёжными** сигналами, НЕ запросом к iTerm (это принципиально —
-запрос к iTerm ненадёжен: зависает, GUID вкладки протухает):
+Живость определяется локальными сигналами из hook-файлов и `pid`; успешный снимок iTerm
+дополнительно используется как консервативная сверка открытых вкладок:
 
+- `filterVisibleTerminalRecords` — Codex без GUID удаляется как desktop/не-iTerm контекст;
+  если iTerm успешно вернул список GUID, старые записи с отсутствующим GUID удаляются как
+  закрытые вкладки. Новые записи после начала снимка не трогаются до следующего снимка.
 - `dedupByTab` — одна строка на GUID вкладки (свежая по `ts`); проигравшие той же вкладки
-  (вложенные codex-rescue и пр. дубли) удаляются с диска. Победитель вкладки и записи без
-  GUID сохраняются всегда → **опустошить живую вкладку невозможно**.
+  (вложенные codex-rescue и пр. дубли) удаляются с диска. После фильтрации победитель
+  вкладки и не-Codex записи без GUID сохраняются.
 - `aggregate` + `pidIsAlive` (`kill -0`): pid мёртв + `done`/`waiting` → файл удаляется;
   pid мёртв + `working` → ⚠️; `working` старше `staleAfter` (1 ч) → удаляется (защита от
   фантома при reuse PID).
 
-Запрос к iTerm через `osascript` используется **только для имён вкладок** (косметика,
-throttle ~10с, watchdog 5с, `character id 9/10` как разделитель — `tab` внутри `tell
-"iTerm2"` перехватывается словарём iTerm!). При зависании/ошибке — фолбэк на имя проекта.
+Запрос к iTerm через `osascript` используется для имён вкладок и сверки открытых GUID
+(throttle ~10с, watchdog 5с, `character id 9/10` как разделитель — `tab` внутри `tell
+"iTerm2"` перехватывается словарём iTerm!). При зависании/ошибке — фолбэк на имя проекта
+и без чистки по GUID.
 
 ## Сборка
 
 ```bash
-cd AgentTrafficLight
-xcodebuild test  -scheme AgentTrafficLight -destination 'platform=macOS' -only-testing:AgentTrafficLightTests
-xcodebuild build -scheme AgentTrafficLight -configuration Release
-sh ../hooks/test_agent-status.sh   # тест producer
+sh hooks/test_agent-status.sh
+xcodebuild test -project AgentTrafficLight/AgentTrafficLight.xcodeproj -scheme AgentTrafficLight -destination 'platform=macOS' -only-testing:AgentTrafficLightTests
+xcodebuild build -project AgentTrafficLight/AgentTrafficLight.xcodeproj -scheme AgentTrafficLight -configuration Release
 ```
 
 App Sandbox выключен намеренно (`ENABLE_APP_SANDBOX=NO`) — нужен доступ к `~/.claude/`.
@@ -82,6 +87,8 @@ iTerm (Конфиденциальность → Автоматизация) — 
 - **Codex: только 🟢/🟡/⚠️, без 🔴.** Hook-система Codex поддерживает лишь
   `session_start`/`user_prompt_submit`/`stop` — события «ждёт разрешения» нет, а
   `SessionEnd` отсутствует (Codex-вкладки чистятся дедупом/по TTL 1 ч/кнопкой Clear).
+  Codex Desktop не учитывается: у него нет `$ITERM_SESSION_ID`, и он не является
+  вкладкой iTerm.
 - **Имена вкладок — best-effort.** iTerm может переназначить GUID сессии (закрытие/
   восстановление окон), а `$ITERM_SESSION_ID` у запущенного процесса не обновляется →
   сохранённый GUID протухает → имя не находится → фолбэк на имя проекта. Освежается
@@ -94,13 +101,13 @@ iTerm (Конфиденциальность → Автоматизация) — 
 
 ```
 hooks/agent-status.sh            producer-скрипт + тест
+docs/PROJECT_MEMORY.md           актуальная проектная память: контракты, ограничения, проверки
 AgentTrafficLight/               Xcode-проект
   AgentTrafficLight/
     Aggregator.swift             чистая логика: счётчики, список, dedupByTab (юнит-тесты)
     StatusStore.swift            чтение файлов + таймер + фокус/имена вкладок iTerm
     AgentTrafficLightApp.swift   MenuBarExtra UI (English)
   AgentTrafficLightTests/        XCTest для Aggregator
-docs/superpowers/                спека и план
 ```
 
 Plane: PTN-44.

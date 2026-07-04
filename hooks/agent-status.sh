@@ -27,9 +27,17 @@ if [ "$STATE" = "end" ]; then
   exit 0
 fi
 
+ITERM="${ITERM_SESSION_ID:-}"
+
+# Индикатор считает вкладки iTerm. Codex Desktop тоже выполняет ~/.codex/hooks.json,
+# но у него нет ITERM_SESSION_ID; такие события не должны попадать в счётчик.
+if [ "$KIND" = "codex" ] && [ -z "$ITERM" ]; then
+  rm -f "$FILE"
+  exit 0
+fi
+
 CWD="$(printf '%s' "$PAYLOAD" | jq -r '.cwd // empty' 2>/dev/null || true)"
 [ -z "$CWD" ] && CWD="$PWD"
-ITERM="${ITERM_SESSION_ID:-}"
 TS="$(date +%s)"
 
 # Атомарная запись: temp + mv (rename), чтобы консьюмер не прочитал полуфайл

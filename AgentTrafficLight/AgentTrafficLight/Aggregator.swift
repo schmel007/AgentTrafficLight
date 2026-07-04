@@ -131,10 +131,39 @@ struct DedupResult: Equatable {
     var staleIds: [String] = []   // проигравшие дедупа той же вкладки (вложенные дубли) — на удаление
 }
 
+struct TerminalFilterResult: Equatable {
+    var kept: [SessionRecord] = []
+    var staleIds: [String] = []   // записи, которые не соответствуют видимой вкладке iTerm
+}
+
+/// Фильтр контрактной поверхности приложения: индикатор считает только вкладки iTerm.
+/// - Codex без GUID — это Codex Desktop/не-iTerm контекст, его надо убрать.
+/// - Если iTerm успешно вернул список GUID, старые записи с отсутствующим GUID считаются
+///   закрытыми вкладками. Новые записи после начала снимка не трогаем до следующего снимка.
+func filterVisibleTerminalRecords(_ records: [SessionRecord],
+                                  liveITermGUIDs: Set<String>? = nil,
+                                  liveITermObservedAt: TimeInterval? = nil) -> TerminalFilterResult {
+    var result = TerminalFilterResult()
+    for r in records {
+        let guid = itermGUID(r.iterm)
+        if r.agent == "codex", guid == nil {
+            result.staleIds.append(r.session_id)
+        } else if let liveITermGUIDs,
+                  let liveITermObservedAt,
+                  let guid,
+                  TimeInterval(r.ts) <= liveITermObservedAt,
+                  !liveITermGUIDs.contains(guid) {
+            result.staleIds.append(r.session_id)
+        } else {
+            result.kept.append(r)
+        }
+    }
+    return result
+}
+
 /// Дедуп: одна запись на GUID вкладки iTerm (свежая по `ts`); записи без GUID — как есть.
 /// Проигравшие той же вкладки (вложенные codex-rescue и пр. дубли) идут в `staleIds` на
-/// удаление — победитель вкладки ВСЕГДА сохраняется, записи без GUID не трогаются, поэтому
-/// «стереть всё» невозможно и нет зависимости от iTerm-запроса (источник прежнего 💤).
+/// удаление — победитель вкладки ВСЕГДА сохраняется, записи без GUID не трогаются.
 func dedupByTab(_ records: [SessionRecord]) -> DedupResult {
     var byTab: [String: SessionRecord] = [:]
     var noGuid: [SessionRecord] = []

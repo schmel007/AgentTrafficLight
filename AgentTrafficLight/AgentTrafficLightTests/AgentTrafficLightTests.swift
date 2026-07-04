@@ -1,6 +1,7 @@
 import XCTest
 @testable import AgentTrafficLight
 
+@MainActor
 final class AggregatorTests: XCTestCase {
     private func rec(_ id: String, _ state: String, _ pid: Int32,
                      ts: Int = 0, agent: String? = nil, cwd: String? = nil, iterm: String? = nil) -> SessionRecord {
@@ -82,7 +83,39 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(cleanTabName("Fix bug", maxLen: 22), "Fix bug")
     }
 
-    // MARK: reconcileByTab
+    // MARK: visible terminal filter
+
+    func test_filter_drops_codex_without_iterm_guid() {
+        let recs = [rec("desktop","working",1, agent: "codex", iterm: ""),
+                    rec("claude","working",2, agent: "claude", iterm: nil)]
+        let r = filterVisibleTerminalRecords(recs)
+        XCTAssertEqual(r.kept.map(\.session_id), ["claude"])
+        XCTAssertEqual(r.staleIds, ["desktop"])
+    }
+
+    func test_filter_keeps_guid_records_when_iterm_snapshot_unavailable() {
+        let recs = [rec("codex","working",1, ts: 10, agent: "codex", iterm: "w0:AAAA")]
+        let r = filterVisibleTerminalRecords(recs, liveITermGUIDs: nil, liveITermObservedAt: nil)
+        XCTAssertEqual(r.kept.map(\.session_id), ["codex"])
+        XCTAssertEqual(r.staleIds, [])
+    }
+
+    func test_filter_drops_old_guid_missing_from_successful_iterm_snapshot() {
+        let recs = [rec("closed","working",1, ts: 10, agent: "codex", iterm: "w0:AAAA"),
+                    rec("open","done",2, ts: 10, agent: "claude", iterm: "w0:BBBB")]
+        let r = filterVisibleTerminalRecords(recs, liveITermGUIDs: Set(["BBBB"]), liveITermObservedAt: 20)
+        XCTAssertEqual(r.kept.map(\.session_id), ["open"])
+        XCTAssertEqual(r.staleIds, ["closed"])
+    }
+
+    func test_filter_keeps_guid_record_newer_than_iterm_snapshot() {
+        let recs = [rec("new","working",1, ts: 30, agent: "codex", iterm: "w0:AAAA")]
+        let r = filterVisibleTerminalRecords(recs, liveITermGUIDs: Set(["BBBB"]), liveITermObservedAt: 20)
+        XCTAssertEqual(r.kept.map(\.session_id), ["new"])
+        XCTAssertEqual(r.staleIds, [])
+    }
+
+    // MARK: dedupByTab
 
     func test_dedup_keeps_newest_and_marks_losers_stale() {
         let recs = [rec("old","done",1, ts: 10, iterm: "w0:AAAA"),

@@ -29,13 +29,19 @@ jq -e '.state=="done" and .session_id=="sess-2"' "$TMP/sess-2.json" >/dev/null |
 echo '{"session_id":"a\"b"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=7 sh "$SCRIPT" working
 jq -e '.session_id=="a\"b" and .state=="working"' "$TMP/a\"b.json" >/dev/null || fail "спецсимвол в SID сломал JSON"
 
-# 6) вид агента codex
-echo '{"session_id":"cx-1"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=5 sh "$SCRIPT" working codex
-jq -e '.agent=="codex"' "$TMP/cx-1.json" >/dev/null || fail "agent=codex не записан"
+# 6) вид агента codex во вкладке iTerm
+echo '{"session_id":"cx-1"}' | ITERM_SESSION_ID="w0t1:GUID-C" AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=5 sh "$SCRIPT" working codex
+jq -e '.agent=="codex" and .iterm=="w0t1:GUID-C"' "$TMP/cx-1.json" >/dev/null || fail "agent=codex не записан"
 
 # 7) без session_id и без AGENT_TRAFFIC_SID → ключ pid-<pid> (нет коллизии unknown)
-printf '{}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=4242 sh "$SCRIPT" working codex
+printf '{}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=4242 sh "$SCRIPT" working
 [ -f "$TMP/pid-4242.json" ] || fail "pid-fallback ключ не создан"
-jq -e '.session_id=="pid-4242" and .agent=="codex"' "$TMP/pid-4242.json" >/dev/null || fail "pid-fallback содержимое неверно"
+jq -e '.session_id=="pid-4242" and .agent=="claude"' "$TMP/pid-4242.json" >/dev/null || fail "pid-fallback содержимое неверно"
+
+# 8) Codex Desktop без iTerm не должен попадать в счётчик и должен убрать старую запись
+echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID="w0t1:GUID-D" AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" working codex
+[ -f "$TMP/cx-desktop.json" ] || fail "fixture codex desktop не создан"
+echo '{"session_id":"cx-desktop"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" done codex
+[ -f "$TMP/cx-desktop.json" ] && fail "codex без ITERM_SESSION_ID не удалил старую запись" || true
 
 echo "ALL PASS"
