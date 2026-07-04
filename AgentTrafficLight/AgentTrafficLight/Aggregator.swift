@@ -17,10 +17,10 @@ struct Counts: Equatable {
     var error = 0
 }
 
-/// Одна сессия, требующая внимания (🔴/🟡/⚠️) — строка в выпадающем меню.
+/// Одна активная сессия — строка в выпадающем меню.
 struct AttentionItem: Equatable, Identifiable {
     let id: String        // session_id
-    let icon: String      // 🔴 | 🟡 | ⚠️
+    let icon: String      // 🔴 | 🟡 | 🟢 | ⚠️
     let agent: String     // Claude | Codex
     var label: String     // имя вкладки iTerm, иначе имя папки проекта (basename cwd)
     let iterm: String?     // ITERM_SESSION_ID для фокуса вкладки, nil если неизвестен
@@ -46,9 +46,9 @@ private func displayLabel(_ cwd: String?) -> String {
 
 /// Сводит записи сессий в счётчики + список требующих внимания.
 /// - `working`: `ts` старше `staleAfter` → удалить (закрывает фантом при reuse PID);
-///   иначе живой pid → 🟢, мёртвый → ⚠️ (в attention).
+///   иначе живой pid → 🟡, мёртвый → ⚠️.
 /// - `waiting`/`done`: живой pid → счёт + attention; мёртвый → на удаление.
-/// 🟢 working в attention НЕ попадают. `now` инъектируется ради тестируемости.
+/// `now` инъектируется ради тестируемости.
 func aggregate(_ records: [SessionRecord],
                now: TimeInterval,
                staleAfter: TimeInterval = 3600,
@@ -63,7 +63,7 @@ func aggregate(_ records: [SessionRecord],
                 result.idsToDelete.append(r.session_id)
             } else if isAlive(r.pid) {
                 result.counts.working += 1
-                result.attention.append(AttentionItem(id: r.session_id, icon: "🟢", agent: agent, label: label, iterm: r.iterm))
+                result.attention.append(AttentionItem(id: r.session_id, icon: "🟡", agent: agent, label: label, iterm: r.iterm))
             } else {
                 result.counts.error += 1
                 result.attention.append(AttentionItem(id: r.session_id, icon: "⚠️", agent: agent, label: label, iterm: r.iterm))
@@ -78,7 +78,7 @@ func aggregate(_ records: [SessionRecord],
         case "done":
             if isAlive(r.pid) {
                 result.counts.done += 1
-                result.attention.append(AttentionItem(id: r.session_id, icon: "🟡", agent: agent, label: label, iterm: r.iterm))
+                result.attention.append(AttentionItem(id: r.session_id, icon: "🟢", agent: agent, label: label, iterm: r.iterm))
             } else {
                 result.idsToDelete.append(r.session_id)
             }
@@ -86,9 +86,9 @@ func aggregate(_ records: [SessionRecord],
             break
         }
     }
-    // Детерминированный порядок: 🔴, ⚠️, 🟡, потом 🟢 (working — наименее срочное); внутри — по подписи.
+    // Детерминированный порядок: 🔴, ⚠️, 🟢 (готово), потом 🟡 (работает); внутри — по подписи.
     let rank: (String) -> Int = {
-        switch $0 { case "🔴": return 0; case "⚠️": return 1; case "🟡": return 2; default: return 3 }
+        switch $0 { case "🔴": return 0; case "⚠️": return 1; case "🟢": return 2; default: return 3 }
     }
     result.attention.sort { a, b in
         rank(a.icon) != rank(b.icon) ? rank(a.icon) < rank(b.icon) : (a.label != b.label ? a.label < b.label : a.id < b.id)
@@ -99,8 +99,8 @@ func aggregate(_ records: [SessionRecord],
 func labelText(for c: Counts) -> String {
     var parts: [String] = []
     if c.waiting > 0 { parts.append("🔴\(c.waiting)") }
-    if c.done > 0    { parts.append("🟡\(c.done)") }
-    if c.working > 0 { parts.append("🟢\(c.working)") }
+    if c.working > 0 { parts.append("🟡\(c.working)") }
+    if c.done > 0    { parts.append("🟢\(c.done)") }
     if c.error > 0   { parts.append("⚠️\(c.error)") }
     return parts.isEmpty ? "💤" : parts.joined(separator: " ")
 }

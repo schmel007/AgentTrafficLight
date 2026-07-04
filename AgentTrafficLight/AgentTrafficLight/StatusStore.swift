@@ -50,7 +50,7 @@ final class StatusStore: ObservableObject {
         if !records.isEmpty { maybeRefreshTabNames() }
     }
 
-    /// Снимает все показанные сейчас строки (🔴/🟡/⚠️): удаляет их файлы. Активные сессии
+    /// Снимает все показанные сейчас строки (🔴/🟡/🟢/⚠️): удаляет их файлы. Активные сессии
     /// пересоздадут файл на следующем событии хука; закрытые/зависшие (Codex без SessionEnd) уйдут.
     func clearShown() {
         for item in attention { deleteFile(item.id) }

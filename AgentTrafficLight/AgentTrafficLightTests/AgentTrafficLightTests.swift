@@ -50,8 +50,8 @@ final class AggregatorTests: XCTestCase {
     func test_attention_includes_all_sorted() {
         let recs = [rec("w","working",1), rec("d","done",2, cwd: "/x/proj"), rec("q","waiting",3, cwd: "/y/api")]
         let r = aggregate(recs, now: 0, isAlive: { _ in true })
-        XCTAssertEqual(r.attention.map(\.id), ["q","d","w"])         // 🔴, 🟡, 🟢
-        XCTAssertEqual(r.attention.map(\.icon), ["🔴","🟡","🟢"])
+        XCTAssertEqual(r.attention.map(\.id), ["q","d","w"])         // 🔴, 🟢, 🟡
+        XCTAssertEqual(r.attention.map(\.icon), ["🔴","🟢","🟡"])
     }
 
     func test_attention_agent_and_label() {
@@ -71,7 +71,7 @@ final class AggregatorTests: XCTestCase {
     func test_label_idle_and_formatting() {
         XCTAssertEqual(labelText(for: Counts()), "💤")
         XCTAssertEqual(labelText(for: Counts(working: 3, waiting: 2, done: 1, error: 1)),
-                       "🔴2 🟡1 🟢3 ⚠️1")
+                       "🔴2 🟡3 🟢1 ⚠️1")
     }
 
     func test_cleanTabName_strips_badge_and_truncates() {
