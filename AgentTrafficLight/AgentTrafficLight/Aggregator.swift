@@ -131,7 +131,7 @@ func labelText(for c: Counts) -> String {
 
 func diagnosticsReport(_ snapshot: DiagnosticsSnapshot) -> String {
     [
-        "AgentTrafficLight Diagnostics",
+        "Agent Signals Diagnostics",
         "refreshedAt: \(diagnosticsTimestamp(snapshot.refreshedAt))",
         "statusDirectory: \(snapshot.statusDirectory)",
         "label: \(labelText(for: snapshot.counts))",

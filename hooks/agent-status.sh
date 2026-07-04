@@ -1,5 +1,5 @@
 #!/bin/sh
-# Пишет статус агентской сессии (Claude Code / Codex) в файл для AgentTrafficLight.
+# Пишет статус агентской сессии (Claude Code / Codex) в файл для Agent Signals.
 # Usage: agent-status.sh <working|waiting|done|end> [claude|codex]
 set -eu
 
