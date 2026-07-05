@@ -4,3 +4,6 @@ dist/
 DerivedData/
 *.xcuserstate
 xcuserdata/
+.claude/
+.agent/
+*.log
