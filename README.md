@@ -33,14 +33,15 @@ lets you focus the relevant iTerm tab from the menu.
 | ⚠️ | Agent was working, but the tracked process died |
 
 The menu lists active Claude Code and Codex terminal sessions, shows the agent logo,
-uses the live iTerm session title when available, and focuses the tab when clicked.
+labels each row with the iTerm tab title (manual title first, live session name as
+fallback), and focuses the tab when clicked.
 
 ## Features
 
 - Menu bar traffic-light counters for waiting, working, finished, and failed sessions.
 - Dropdown session list with Claude Code and Codex icons.
-- Live iTerm session titles in the session list, matching what the tab shows right now,
-  including renames after the agent starts.
+- Session labels use your manual iTerm tab title when you set one; tabs without a manual
+  title follow the live session title.
 - One-click focus for the relevant iTerm tab.
 - Local JSON status pipeline under `~/.claude/agent-traffic/`.
 - Automatic cleanup for closed tabs, duplicate session records, stale work, and dead

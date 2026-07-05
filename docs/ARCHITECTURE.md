@@ -59,7 +59,7 @@ deleted to reduce stale process-id reuse.
 The app uses AppleScript through `/usr/bin/osascript` to:
 
 - list open iTerm sessions and their GUIDs;
-- resolve live session titles (tab title as fallback);
+- resolve row labels (manual tab title first, live session name as fallback);
 - focus the clicked tab.
 
 The iTerm query is throttled and guarded by a timeout. If Automation is denied or iTerm

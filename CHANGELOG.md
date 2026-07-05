@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 - 2026-07-05
+
+- Fixed: manually set iTerm tab titles win again. 1.1.0 always used the live session
+  name, which replaced meaningful manual titles with defaults like `user (codex)` for
+  finished Codex sessions. Tabs without a manual title still follow the live session
+  name.
+
 ## 1.1.0 - 2026-07-05
 
 - Fixed: nested Codex runs spawned inside a Claude Code session (review helpers etc.)

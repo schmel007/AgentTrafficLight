@@ -154,8 +154,8 @@ final class StatusStore: ObservableObject {
             repeat with t in tabs of w
               set tabTitle to title of t
               repeat with s in sessions of t
-                set label to name of s
-                if label is "" then set label to tabTitle
+                set label to tabTitle
+                if label is "" then set label to name of s
                 set out to out & (id of s) & (character id 9) & label & (character id 10)
               end repeat
             end repeat
