@@ -1,5 +1,5 @@
 #!/bin/sh
-# Пишет статус агентской сессии (Claude Code / Codex) в файл для Agent Signals.
+# Writes an agent session status (Claude Code / Codex) to a file for Agent Signals.
 # Usage: agent-status.sh <working|waiting|done|end> [claude|codex]
 set -eu
 
@@ -11,11 +11,11 @@ mkdir -p "$DIR"
 
 PAYLOAD="$(cat 2>/dev/null || true)"
 
-# pid процесса агента (дед хук-скрипта) — прокси живости сессии
+# Agent process pid (grandparent of the hook script) — a session liveness proxy
 PID="${AGENT_TRAFFIC_PID:-$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')}"
 [ -z "$PID" ] && PID=0
 
-# session_id: из payload, иначе env, иначе pid-<pid> (уникальность даже без session_id, напр. у Codex)
+# session_id: from payload, else env, else pid-<pid> (unique even without a session_id, e.g. Codex)
 SID="$(printf '%s' "$PAYLOAD" | jq -r '.session_id // .sessionId // empty' 2>/dev/null || true)"
 [ -z "$SID" ] && SID="${AGENT_TRAFFIC_SID:-}"
 [ -z "$SID" ] && SID="pid-$PID"
@@ -29,8 +29,8 @@ fi
 
 ITERM="${ITERM_SESSION_ID:-}"
 
-# Индикатор считает вкладки iTerm. Codex Desktop тоже выполняет ~/.codex/hooks.json,
-# но у него нет ITERM_SESSION_ID; такие события не должны попадать в счётчик.
+# The indicator counts iTerm tabs. Codex Desktop also executes ~/.codex/hooks.json,
+# but it has no ITERM_SESSION_ID; such events must not reach the counter.
 if [ "$KIND" = "codex" ] && [ -z "$ITERM" ]; then
   rm -f "$FILE"
   exit 0
@@ -40,7 +40,7 @@ CWD="$(printf '%s' "$PAYLOAD" | jq -r '.cwd // empty' 2>/dev/null || true)"
 [ -z "$CWD" ] && CWD="$PWD"
 TS="$(date +%s)"
 
-# Атомарная запись: temp + mv (rename), чтобы консьюмер не прочитал полуфайл
+# Atomic write: temp + mv (rename) so the consumer never reads a half-written file
 TMP="$FILE.tmp.$$"
 jq -n \
   --arg sid "$SID" \

@@ -16,9 +16,9 @@ final class StatusStore: ObservableObject {
     private let dir: URL
     private var timer: Timer?
 
-    private var rawAttention: [AttentionItem] = []   // подписи = имя проекта (из aggregate)
-    private var tabNames: [String: String] = [:]     // GUID сессии iTerm → заголовок вкладки (косметика)
-    private var liveITermGUIDs: Set<String>? = nil   // nil = iTerm не опрошен/недоступен
+    private var rawAttention: [AttentionItem] = []   // labels = project name (from aggregate)
+    private var tabNames: [String: String] = [:]     // iTerm session GUID → tab title (cosmetic)
+    private var liveITermGUIDs: Set<String>? = nil   // nil = iTerm not queried / unavailable
     private var liveITermObservedAt: TimeInterval? = nil
     private var queryingNames = false
     private var lastNamesQuery: TimeInterval = 0
@@ -43,11 +43,11 @@ final class StatusStore: ObservableObject {
         let visible = filterVisibleTerminalRecords(records,
                                                    liveITermGUIDs: liveITermGUIDs,
                                                    liveITermObservedAt: liveITermObservedAt)
-        for id in visible.staleIds { deleteFile(id) }   // Codex Desktop + закрытые iTerm GUID
-        let deduped = dedupByTab(visible.kept)   // одна строка на вкладку
-        for id in deduped.staleIds { deleteFile(id) }   // чистим вложенные дубли той же вкладки
+        for id in visible.staleIds { deleteFile(id) }   // Codex Desktop + closed iTerm GUIDs
+        let deduped = dedupByTab(visible.kept)   // one row per tab
+        for id in deduped.staleIds { deleteFile(id) }   // remove nested same-tab duplicates
         let result = aggregate(deduped.kept, now: now, isAlive: pidIsAlive)
-        for id in result.idsToDelete { deleteFile(id) }   // pid-мёртвые done/waiting + working-TTL
+        for id in result.idsToDelete { deleteFile(id) }   // pid-dead done/waiting + working TTL
         label = labelText(for: result.counts)
         rawAttention = result.attention
         attention = applyTabNames(rawAttention)
@@ -71,8 +71,8 @@ final class StatusStore: ObservableObject {
         if !records.isEmpty { maybeRefreshTabNames() }
     }
 
-    /// Снимает все показанные сейчас строки (🔴/🟡/🟢/⚠️): удаляет их файлы. Активные сессии
-    /// пересоздадут файл на следующем событии хука; закрытые/зависшие (Codex без SessionEnd) уйдут.
+    /// Dismisses all currently shown rows (🔴/🟡/🟢/⚠️): deletes their files. Active sessions
+    /// recreate the file on the next hook event; closed/stuck ones (Codex without SessionEnd) go away.
     func clearShown() {
         for item in attention { deleteFile(item.id) }
         refresh()
@@ -87,7 +87,7 @@ final class StatusStore: ObservableObject {
         NSWorkspace.shared.open(dir)
     }
 
-    /// Фокусирует вкладку iTerm по её session id через osascript.
+    /// Focuses the iTerm tab by its session id via osascript.
     func focus(_ item: AttentionItem) {
         guard let guid = itermGUID(item.iterm) else { return }
         let script = """
@@ -110,7 +110,7 @@ final class StatusStore: ObservableObject {
         runOsascript(script)
     }
 
-    // MARK: - имена и живость вкладок iTerm
+    // MARK: - iTerm tab names and liveness
 
     private func applyTabNames(_ items: [AttentionItem]) -> [AttentionItem] {
         items.map { item in
@@ -122,7 +122,7 @@ final class StatusStore: ObservableObject {
         }
     }
 
-    /// Асинхронно (вне main) опрашивает iTerm о вкладках, не чаще раза в ~10с.
+    /// Asynchronously (off the main thread) queries iTerm for tabs, at most once per ~10s.
     private func maybeRefreshTabNames() {
         let now = Date().timeIntervalSince1970
         guard !queryingNames, now - lastNamesQuery > 10 else { return }
@@ -134,7 +134,7 @@ final class StatusStore: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.queryingNames = false
-                if let map {                       // nil → osascript не сработал, оставляем прежние имена
+                if let map {                       // nil → osascript failed, keep the previous names
                     self.tabNames = map
                     self.liveITermGUIDs = Set(map.keys)
                     self.liveITermObservedAt = queryStartedAt
@@ -144,8 +144,8 @@ final class StatusStore: ObservableObject {
         }
     }
 
-    /// nil → osascript не сработал (нет разрешения/iTerm недоступен); пустой словарь →
-    /// iTerm ответил, но открытых сессий нет.
+    /// nil → osascript failed (no permission / iTerm unavailable); an empty dictionary →
+    /// iTerm responded but has no open sessions.
     private static func queryITermTabTitles() -> [String: String]? {
         let script = """
         tell application "iTerm2"
@@ -180,16 +180,16 @@ final class StatusStore: ObservableObject {
         task.arguments = ["-e", script]
         let pipe = Pipe()
         task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice   // не копим stderr → нет deadlock
+        task.standardError = FileHandle.nullDevice   // do not buffer stderr → no deadlock
         do { try task.run() } catch { return nil }
-        // сторож: если osascript завис (диалог Automation / зависание iTerm) — убить через 5с,
-        // иначе фоновый поток и флаг queryingNames застрянут навсегда
+        // watchdog: if osascript hangs (Automation dialog / frozen iTerm) — kill it after 5s,
+        // otherwise the background thread and the queryingNames flag would be stuck forever
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
             if task.isRunning { task.terminate() }
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         task.waitUntilExit()
-        guard task.terminationStatus == 0 else { return nil }   // ошибка/нет разрешения/убит сторожем
+        guard task.terminationStatus == 0 else { return nil }   // error / no permission / killed by the watchdog
         return String(data: data, encoding: .utf8)
     }
 

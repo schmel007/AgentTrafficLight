@@ -166,14 +166,14 @@ final class AggregatorTests: XCTestCase {
                     rec("new","working",2, ts: 20, iterm: "w0:AAAA"),
                     rec("other","done",3, ts: 5, iterm: "w0:BBBB")]
         let r = dedupByTab(recs)
-        XCTAssertEqual(r.kept.map(\.session_id).sorted(), ["new","other"])  // свежая на вкладку + другая вкладка
-        XCTAssertEqual(r.staleIds, ["old"])   // проигравший той же вкладки → на удаление
+        XCTAssertEqual(r.kept.map(\.session_id).sorted(), ["new","other"])  // freshest per tab + the other tab
+        XCTAssertEqual(r.staleIds, ["old"])   // same-tab loser → scheduled for deletion
     }
 
     func test_dedup_keeps_records_without_guid() {
-        let recs = [rec("a","working",1), rec("b","done",2)]   // нет iterm
+        let recs = [rec("a","working",1), rec("b","done",2)]   // no iterm
         let r = dedupByTab(recs)
-        XCTAssertEqual(r.kept.map(\.session_id).sorted(), ["a","b"])  // без GUID не схлопываются
+        XCTAssertEqual(r.kept.map(\.session_id).sorted(), ["a","b"])  // records without a GUID are not collapsed
         XCTAssertEqual(r.staleIds, [])
     }
 
@@ -181,6 +181,6 @@ final class AggregatorTests: XCTestCase {
         let recs = [rec("a","working",1, iterm: "w0:AAAA")]
         let r = dedupByTab(recs)
         XCTAssertEqual(r.kept.map(\.session_id), ["a"])
-        XCTAssertEqual(r.staleIds, [])   // единственный — победитель, не удаляется
+        XCTAssertEqual(r.staleIds, [])   // the only record is the winner, never deleted
     }
 }

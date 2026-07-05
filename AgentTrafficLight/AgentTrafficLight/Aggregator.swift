@@ -5,7 +5,7 @@ struct SessionRecord: Codable, Equatable {
     let state: String
     let pid: Int32
     let ts: Int
-    var agent: String? = nil   // "claude" | "codex" (старые файлы → nil → claude)
+    var agent: String? = nil   // "claude" | "codex" (legacy files → nil → claude)
     var cwd: String? = nil
     var iterm: String? = nil
 }
@@ -41,13 +41,13 @@ struct DiagnosticsSnapshot: Equatable {
     static let empty = DiagnosticsSnapshot()
 }
 
-/// Одна активная сессия — строка в выпадающем меню.
+/// One active session — a row in the dropdown menu.
 struct AttentionItem: Equatable, Identifiable {
     let id: String        // session_id
     let icon: String      // 🔴 | 🟡 | 🟢 | ⚠️
     let agent: String     // Claude | Codex
-    var label: String     // имя вкладки iTerm, иначе имя папки проекта (basename cwd)
-    let iterm: String?     // ITERM_SESSION_ID для фокуса вкладки, nil если неизвестен
+    var label: String     // iTerm tab name, else project folder name (basename of cwd)
+    let iterm: String?     // ITERM_SESSION_ID for focusing the tab, nil if unknown
 }
 
 struct AggregationResult: Equatable {
@@ -68,11 +68,11 @@ private func displayLabel(_ cwd: String?) -> String {
     return (cwd as NSString).lastPathComponent
 }
 
-/// Сводит записи сессий в счётчики + список требующих внимания.
-/// - `working`: `ts` старше `staleAfter` → удалить (закрывает фантом при reuse PID);
-///   иначе живой pid → 🟡, мёртвый → ⚠️.
-/// - `waiting`/`done`: живой pid → счёт + attention; мёртвый → на удаление.
-/// `now` инъектируется ради тестируемости.
+/// Reduces session records into counters + the attention list.
+/// - `working`: `ts` older than `staleAfter` → delete (closes the PID-reuse phantom);
+///   otherwise live pid → 🟡, dead → ⚠️.
+/// - `waiting`/`done`: live pid → count + attention; dead → scheduled for deletion.
+/// `now` is injected for testability.
 func aggregate(_ records: [SessionRecord],
                now: TimeInterval,
                staleAfter: TimeInterval = 3600,
@@ -110,7 +110,7 @@ func aggregate(_ records: [SessionRecord],
             break
         }
     }
-    // Детерминированный порядок: 🔴, ⚠️, 🟢 (готово), потом 🟡 (работает); внутри — по подписи.
+    // Deterministic order: 🔴, ⚠️, 🟢 (done), then 🟡 (working); ties break by label.
     let rank: (String) -> Int = {
         switch $0 { case "🔴": return 0; case "⚠️": return 1; case "🟢": return 2; default: return 3 }
     }
@@ -163,8 +163,8 @@ private func diagnosticsList(_ values: [String]) -> String {
     values.isEmpty ? "-" : values.sorted().joined(separator: ", ")
 }
 
-/// Чистит имя вкладки iTerm для меню: убирает ведущий badge-символ (✳/●/…),
-/// обрезает до `maxLen` символов с «…» — чтобы ширина окна была фиксированной.
+/// Cleans an iTerm tab name for the menu: strips the leading badge symbol (✳/●/…),
+/// truncates to `maxLen` characters with "…" so the menu width stays fixed.
 func cleanTabName(_ raw: String, maxLen: Int = 22) -> String {
     var s = raw.trimmingCharacters(in: .whitespaces)
     if let firstAlnum = s.firstIndex(where: { $0.isLetter || $0.isNumber }) {
@@ -176,7 +176,7 @@ func cleanTabName(_ raw: String, maxLen: Int = 22) -> String {
     return s
 }
 
-/// GUID вкладки iTerm = часть ITERM_SESSION_ID после ":" (совпадает с `id of session`).
+/// iTerm tab GUID = the part of ITERM_SESSION_ID after ":" (matches `id of session`).
 func itermGUID(_ iterm: String?) -> String? {
     guard let g = iterm?.split(separator: ":").last.map(String.init),
           !g.isEmpty,
@@ -186,18 +186,18 @@ func itermGUID(_ iterm: String?) -> String? {
 
 struct DedupResult: Equatable {
     var kept: [SessionRecord] = []
-    var staleIds: [String] = []   // проигравшие дедупа той же вкладки (вложенные дубли) — на удаление
+    var staleIds: [String] = []   // same-tab dedup losers (nested duplicates) — scheduled for deletion
 }
 
 struct TerminalFilterResult: Equatable {
     var kept: [SessionRecord] = []
-    var staleIds: [String] = []   // записи, которые не соответствуют видимой вкладке iTerm
+    var staleIds: [String] = []   // records that do not match any visible iTerm tab
 }
 
-/// Фильтр контрактной поверхности приложения: индикатор считает только вкладки iTerm.
-/// - Codex без GUID — это Codex Desktop/не-iTerm контекст, его надо убрать.
-/// - Если iTerm успешно вернул список GUID, старые записи с отсутствующим GUID считаются
-///   закрытыми вкладками. Новые записи после начала снимка не трогаем до следующего снимка.
+/// Filter for the app's contract surface: the indicator counts iTerm tabs only.
+/// - Codex without a GUID is Codex Desktop / a non-iTerm context and must be removed.
+/// - If iTerm successfully returned the GUID list, older records with a missing GUID are
+///   treated as closed tabs. Records newer than the snapshot are kept until the next snapshot.
 func filterVisibleTerminalRecords(_ records: [SessionRecord],
                                   liveITermGUIDs: Set<String>? = nil,
                                   liveITermObservedAt: TimeInterval? = nil) -> TerminalFilterResult {
@@ -219,9 +219,9 @@ func filterVisibleTerminalRecords(_ records: [SessionRecord],
     return result
 }
 
-/// Дедуп: одна запись на GUID вкладки iTerm (свежая по `ts`); записи без GUID — как есть.
-/// Проигравшие той же вкладки (вложенные codex-rescue и пр. дубли) идут в `staleIds` на
-/// удаление — победитель вкладки ВСЕГДА сохраняется, записи без GUID не трогаются.
+/// Dedup: one record per iTerm tab GUID (freshest by `ts`); records without a GUID pass through.
+/// Same-tab losers (nested codex-rescue runs and other duplicates) go to `staleIds` for
+/// deletion — the tab winner is ALWAYS kept, records without a GUID are left untouched.
 func dedupByTab(_ records: [SessionRecord]) -> DedupResult {
     var byTab: [String: SessionRecord] = [:]
     var noGuid: [SessionRecord] = []
@@ -230,10 +230,10 @@ func dedupByTab(_ records: [SessionRecord]) -> DedupResult {
         guard let g = itermGUID(r.iterm) else { noGuid.append(r); continue }
         if let cur = byTab[g] {
             if r.ts >= cur.ts {
-                stale.append(cur.session_id)   // прежний победитель уступил более свежему
+                stale.append(cur.session_id)   // previous winner lost to a fresher record
                 byTab[g] = r
             } else {
-                stale.append(r.session_id)     // текущий проиграл
+                stale.append(r.session_id)     // current record lost
             }
         } else {
             byTab[g] = r

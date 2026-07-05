@@ -5,43 +5,43 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $1"; exit 1; }
 
-# 1) session_id из stdin, state working, agent по умолчанию claude, iterm из env
+# 1) session_id from stdin, state working, agent defaults to claude, iterm from env
 echo '{"session_id":"sess-1","cwd":"/x/proj"}' | \
   AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=99999 ITERM_SESSION_ID="w0t1:GUID-A" sh "$SCRIPT" working
 F="$TMP/sess-1.json"
-[ -f "$F" ] || fail "файл не создан"
+[ -f "$F" ] || fail "file not created"
 jq -e '.state=="working" and .pid==99999 and .session_id=="sess-1" and .agent=="claude" and .cwd=="/x/proj" and .iterm=="w0t1:GUID-A" and (.ts|type=="number")' "$F" >/dev/null \
-  || fail "содержимое working неверно: $(cat "$F")"
+  || fail "working content is wrong: $(cat "$F")"
 
-# 2) waiting перезаписывает тот же файл
+# 2) waiting overwrites the same file
 echo '{"session_id":"sess-1"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=99999 sh "$SCRIPT" waiting
-jq -e '.state=="waiting"' "$F" >/dev/null || fail "waiting не записан"
+jq -e '.state=="waiting"' "$F" >/dev/null || fail "waiting not written"
 
-# 3) end удаляет файл
+# 3) end deletes the file
 echo '{"session_id":"sess-1"}' | AGENT_TRAFFIC_DIR="$TMP" sh "$SCRIPT" end
-[ -f "$F" ] && fail "end не удалил файл" || true
+[ -f "$F" ] && fail "end did not delete the file" || true
 
-# 4) fallback на AGENT_TRAFFIC_SID когда stdin пустой
+# 4) fallback to AGENT_TRAFFIC_SID when stdin is empty
 printf '' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_SID=sess-2 AGENT_TRAFFIC_PID=1 sh "$SCRIPT" done
-jq -e '.state=="done" and .session_id=="sess-2"' "$TMP/sess-2.json" >/dev/null || fail "fallback SID не сработал"
+jq -e '.state=="done" and .session_id=="sess-2"' "$TMP/sess-2.json" >/dev/null || fail "SID fallback did not work"
 
-# 5) session_id со спецсимволом не ломает JSON
+# 5) session_id with a special character does not break JSON
 echo '{"session_id":"a\"b"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=7 sh "$SCRIPT" working
-jq -e '.session_id=="a\"b" and .state=="working"' "$TMP/a\"b.json" >/dev/null || fail "спецсимвол в SID сломал JSON"
+jq -e '.session_id=="a\"b" and .state=="working"' "$TMP/a\"b.json" >/dev/null || fail "special character in SID broke JSON"
 
-# 6) вид агента codex во вкладке iTerm
+# 6) codex agent kind in an iTerm tab
 echo '{"session_id":"cx-1"}' | ITERM_SESSION_ID="w0t1:GUID-C" AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=5 sh "$SCRIPT" working codex
-jq -e '.agent=="codex" and .iterm=="w0t1:GUID-C"' "$TMP/cx-1.json" >/dev/null || fail "agent=codex не записан"
+jq -e '.agent=="codex" and .iterm=="w0t1:GUID-C"' "$TMP/cx-1.json" >/dev/null || fail "agent=codex not written"
 
-# 7) без session_id и без AGENT_TRAFFIC_SID → ключ pid-<pid> (нет коллизии unknown)
+# 7) no session_id and no AGENT_TRAFFIC_SID → pid-<pid> key (no "unknown" collision)
 printf '{}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=4242 sh "$SCRIPT" working
-[ -f "$TMP/pid-4242.json" ] || fail "pid-fallback ключ не создан"
-jq -e '.session_id=="pid-4242" and .agent=="claude"' "$TMP/pid-4242.json" >/dev/null || fail "pid-fallback содержимое неверно"
+[ -f "$TMP/pid-4242.json" ] || fail "pid-fallback key not created"
+jq -e '.session_id=="pid-4242" and .agent=="claude"' "$TMP/pid-4242.json" >/dev/null || fail "pid-fallback content is wrong"
 
-# 8) Codex Desktop без iTerm не должен попадать в счётчик и должен убрать старую запись
+# 8) Codex Desktop without iTerm must not reach the counter and must remove the old record
 echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID="w0t1:GUID-D" AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" working codex
-[ -f "$TMP/cx-desktop.json" ] || fail "fixture codex desktop не создан"
+[ -f "$TMP/cx-desktop.json" ] || fail "codex desktop fixture not created"
 echo '{"session_id":"cx-desktop"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" done codex
-[ -f "$TMP/cx-desktop.json" ] && fail "codex без ITERM_SESSION_ID не удалил старую запись" || true
+[ -f "$TMP/cx-desktop.json" ] && fail "codex without ITERM_SESSION_ID did not delete the old record" || true
 
 echo "ALL PASS"
