@@ -112,7 +112,7 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(cleanTabName("Fix bug", maxLen: 22), "Fix bug")
     }
 
-    func test_parseITermTabTitleMap_usesTabTitleForEachSession() {
+    func test_parseITermTabTitleMap_parsesGuidTitleLines() {
         let output = """
         GUID-A\tOKX session check
         GUID-B\tOKX session check

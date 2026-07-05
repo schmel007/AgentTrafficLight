@@ -17,7 +17,7 @@ final class StatusStore: ObservableObject {
     private var timer: Timer?
 
     private var rawAttention: [AttentionItem] = []   // labels = project name (from aggregate)
-    private var tabNames: [String: String] = [:]     // iTerm session GUID → tab title (cosmetic)
+    private var tabNames: [String: String] = [:]     // iTerm session GUID → displayed title (cosmetic)
     private var liveITermGUIDs: Set<String>? = nil   // nil = iTerm not queried / unavailable
     private var liveITermObservedAt: TimeInterval? = nil
     private var queryingNames = false
@@ -154,8 +154,8 @@ final class StatusStore: ObservableObject {
             repeat with t in tabs of w
               set tabTitle to title of t
               repeat with s in sessions of t
-                set label to tabTitle
-                if label is "" then set label to name of s
+                set label to name of s
+                if label is "" then set label to tabTitle
                 set out to out & (id of s) & (character id 9) & label & (character id 10)
               end repeat
             end repeat

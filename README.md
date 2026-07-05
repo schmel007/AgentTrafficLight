@@ -11,7 +11,7 @@ menu bar, so I can always see which agent is working, which one has finished, an
 one needs my attention.
 
 <p align="center">
-  <img src="docs/assets/agent-signals-menu.png" width="641" alt="Agent Signals menu showing two completed agent sessions">
+  <img src="docs/assets/agent-signals-menu.png" width="590" alt="Agent Signals menu showing a finished Claude Code session and a working Codex session">
 </p>
 
 Agent Signals is a small macOS menu bar app for people who run AI coding agents in
@@ -32,13 +32,14 @@ lets you focus the relevant iTerm tab from the menu.
 | ⚠️ | Agent was working, but the tracked process died |
 
 The menu lists active Claude Code and Codex terminal sessions, shows the agent logo,
-uses the iTerm tab title when available, and focuses the tab when clicked.
+uses the live iTerm session title when available, and focuses the tab when clicked.
 
 ## Features
 
 - Menu bar traffic-light counters for waiting, working, finished, and failed sessions.
 - Dropdown session list with Claude Code and Codex icons.
-- iTerm tab titles in the session list, including titles changed after the agent starts.
+- Live iTerm session titles in the session list, matching what the tab shows right now,
+  including renames after the agent starts.
 - One-click focus for the relevant iTerm tab.
 - Local JSON status pipeline under `~/.claude/agent-traffic/`.
 - Automatic cleanup for closed tabs, duplicate session records, stale work, and dead
@@ -171,7 +172,7 @@ More details: [docs/RELEASE.md](docs/RELEASE.md).
 - Codex terminal has no waiting/approval hook, so Codex shows only 🟡, 🟢, and ⚠️.
 - Codex terminal has no `SessionEnd`; closed Codex tabs are cleaned by iTerm GUID checks,
   TTL, or internal cleanup.
-- iTerm tab titles are best effort. If Automation is denied or iTerm is slow, the menu
+- iTerm session titles are best effort. If Automation is denied or iTerm is slow, the menu
   falls back to the project directory name.
 - Long-running single tools without hook activity for more than one hour may be dropped
   from 🟡 to avoid stale process-id ghosts.
