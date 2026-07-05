@@ -17,7 +17,7 @@ final class StatusStore: ObservableObject {
     private var timer: Timer?
 
     private var rawAttention: [AttentionItem] = []   // подписи = имя проекта (из aggregate)
-    private var tabNames: [String: String] = [:]     // GUID вкладки iTerm → имя (косметика)
+    private var tabNames: [String: String] = [:]     // GUID сессии iTerm → заголовок вкладки (косметика)
     private var liveITermGUIDs: Set<String>? = nil   // nil = iTerm не опрошен/недоступен
     private var liveITermObservedAt: TimeInterval? = nil
     private var queryingNames = false
@@ -122,7 +122,7 @@ final class StatusStore: ObservableObject {
         }
     }
 
-    /// Асинхронно (вне main) опрашивает iTerm о вкладках, не чаще раза в ~4с.
+    /// Асинхронно (вне main) опрашивает iTerm о вкладках, не чаще раза в ~10с.
     private func maybeRefreshTabNames() {
         let now = Date().timeIntervalSince1970
         guard !queryingNames, now - lastNamesQuery > 10 else { return }
@@ -130,7 +130,7 @@ final class StatusStore: ObservableObject {
         lastNamesQuery = now
         let queryStartedAt = now
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let map = StatusStore.queryITermTabNames()
+            let map = StatusStore.queryITermTabTitles()
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.queryingNames = false
@@ -146,14 +146,17 @@ final class StatusStore: ObservableObject {
 
     /// nil → osascript не сработал (нет разрешения/iTerm недоступен); пустой словарь →
     /// iTerm ответил, но открытых сессий нет.
-    private static func queryITermTabNames() -> [String: String]? {
+    private static func queryITermTabTitles() -> [String: String]? {
         let script = """
         tell application "iTerm2"
           set out to ""
           repeat with w in windows
             repeat with t in tabs of w
+              set tabTitle to title of t
               repeat with s in sessions of t
-                set out to out & (id of s) & (character id 9) & (name of s) & (character id 10)
+                set label to tabTitle
+                if label is "" then set label to name of s
+                set out to out & (id of s) & (character id 9) & label & (character id 10)
               end repeat
             end repeat
           end repeat
@@ -161,14 +164,7 @@ final class StatusStore: ObservableObject {
         end tell
         """
         guard let output = runOsascriptCapturing(script) else { return nil }
-        var map: [String: String] = [:]
-        for line in output.split(separator: "\n") {
-            let parts = line.split(separator: "\t", maxSplits: 1)
-            if parts.count == 2 {
-                map[String(parts[0])] = String(parts[1]).trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return map
+        return parseITermTabTitleMap(output)
     }
 
     private func runOsascript(_ script: String) {
@@ -228,4 +224,15 @@ final class StatusStore: ObservableObject {
                                  jsonFileCount: jsonFiles.count,
                                  invalidFileNames: invalidFileNames)
     }
+}
+
+func parseITermTabTitleMap(_ output: String) -> [String: String] {
+    var map: [String: String] = [:]
+    for line in output.split(separator: "\n") {
+        let parts = line.split(separator: "\t", maxSplits: 1)
+        if parts.count == 2 {
+            map[String(parts[0])] = String(parts[1]).trimmingCharacters(in: .whitespaces)
+        }
+    }
+    return map
 }

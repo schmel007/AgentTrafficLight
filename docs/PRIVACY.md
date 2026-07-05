@@ -19,11 +19,11 @@ Those files may contain:
 - current working directory;
 - iTerm session id.
 
-The app also asks iTerm for open tab/session names when Automation permission is granted.
+The app also asks iTerm for open tab titles when Automation permission is granted.
 
 ## Network
 
-Agent Signals does not send app telemetry, status records, project paths, or tab names to
+Agent Signals does not send app telemetry, status records, project paths, or tab titles to
 any server.
 
 The release script uses Apple notarization services when maintainers build a release. The
@@ -38,5 +38,5 @@ normal cleanup.
 ## Permissions
 
 macOS may ask for Automation permission so Agent Signals can inspect and focus iTerm tabs.
-If permission is denied, the app still shows status from local files but tab names and
+If permission is denied, the app still shows status from local files but tab titles and
 focus behavior are limited.

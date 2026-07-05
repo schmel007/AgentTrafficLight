@@ -4,6 +4,16 @@
 
 # Agent Signals
 
+I built Agent Signals because terminal notifications are easy to miss while I am deep
+in work. When an AI coding agent waits for input, approval, or a quick review, every
+missed prompt becomes idle time. Agent Signals keeps a small traffic light in the macOS
+menu bar, so I can always see which agent is working, which one has finished, and which
+one needs my attention.
+
+<p align="center">
+  <img src="docs/assets/agent-signals-menu.png" width="641" alt="Agent Signals menu showing two completed agent sessions">
+</p>
+
 Agent Signals is a small macOS menu bar app for people who run AI coding agents in
 iTerm. It turns silent agent state changes into a compact traffic-light indicator and
 lets you focus the relevant iTerm tab from the menu.
@@ -22,7 +32,21 @@ lets you focus the relevant iTerm tab from the menu.
 | ⚠️ | Agent was working, but the tracked process died |
 
 The menu lists active Claude Code and Codex terminal sessions, shows the agent logo,
-uses the iTerm tab name when available, and focuses the tab when clicked.
+uses the iTerm tab title when available, and focuses the tab when clicked.
+
+## Features
+
+- Menu bar traffic-light counters for waiting, working, finished, and failed sessions.
+- Dropdown session list with Claude Code and Codex icons.
+- iTerm tab titles in the session list, including titles changed after the agent starts.
+- One-click focus for the relevant iTerm tab.
+- Local JSON status pipeline under `~/.claude/agent-traffic/`.
+- Automatic cleanup for closed tabs, duplicate session records, stale work, and dead
+  agent processes.
+- Terminal-only filtering, so Codex Desktop and non-iTerm hook events do not pollute the
+  signal.
+- Local-only operation with no telemetry or remote status uploads.
+- Developer ID notarized direct-download release flow for public distribution.
 
 ## Requirements
 
@@ -39,13 +63,14 @@ Codex Desktop is intentionally ignored: it is not an iTerm tab and does not expo
 
 This is the only section most users need.
 
-Download a notarized `AgentSignals.zip` release, unzip it, move `Agent Signals.app` to
-`/Applications`, then open it.
+Download the latest notarized `AgentSignals.zip` from
+[GitHub Releases](https://github.com/schmel007/AgentTrafficLight/releases/latest), unzip
+it, move `Agent Signals.app` to `/Applications`, then open it.
 
 You do not need Xcode, Apple Developer Program membership, Developer ID certificates, or
 notarization credentials to install and use a published release.
 
-On first focus or tab-name refresh, macOS asks for Automation permission to control
+On first focus or tab-title refresh, macOS asks for Automation permission to control
 iTerm. Allow it in System Settings → Privacy & Security → Automation.
 
 To launch at login, add `/Applications/Agent Signals.app` in System Settings → General
@@ -146,7 +171,7 @@ More details: [docs/RELEASE.md](docs/RELEASE.md).
 - Codex terminal has no waiting/approval hook, so Codex shows only 🟡, 🟢, and ⚠️.
 - Codex terminal has no `SessionEnd`; closed Codex tabs are cleaned by iTerm GUID checks,
   TTL, or internal cleanup.
-- iTerm tab names are best effort. If Automation is denied or iTerm is slow, the menu
+- iTerm tab titles are best effort. If Automation is denied or iTerm is slow, the menu
   falls back to the project directory name.
 - Long-running single tools without hook activity for more than one hour may be dropped
   from 🟡 to avoid stale process-id ghosts.

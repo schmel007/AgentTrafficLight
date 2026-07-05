@@ -112,6 +112,21 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(cleanTabName("Fix bug", maxLen: 22), "Fix bug")
     }
 
+    func test_parseITermTabTitleMap_usesTabTitleForEachSession() {
+        let output = """
+        GUID-A\tOKX session check
+        GUID-B\tOKX session check
+        GUID-C\tНаведение порядка
+
+        """
+
+        XCTAssertEqual(parseITermTabTitleMap(output), [
+            "GUID-A": "OKX session check",
+            "GUID-B": "OKX session check",
+            "GUID-C": "Наведение порядка"
+        ])
+    }
+
     // MARK: visible terminal filter
 
     func test_filter_drops_codex_without_iterm_guid() {

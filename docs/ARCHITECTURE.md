@@ -40,7 +40,7 @@ Core logic lives in [Aggregator.swift](../AgentTrafficLight/AgentTrafficLight/Ag
 - generate the internal diagnostics report.
 
 [StatusStore.swift](../AgentTrafficLight/AgentTrafficLight/StatusStore.swift) handles file IO,
-periodic refreshes, iTerm AppleScript calls, tab-name lookup, and tab focusing.
+periodic refreshes, iTerm AppleScript calls, tab-title lookup, and tab focusing.
 
 ## State Semantics
 
@@ -59,7 +59,7 @@ deleted to reduce stale process-id reuse.
 The app uses AppleScript through `/usr/bin/osascript` to:
 
 - list open iTerm sessions and their GUIDs;
-- resolve tab names;
+- resolve tab titles;
 - focus the clicked tab.
 
 The iTerm query is throttled and guarded by a timeout. If Automation is denied or iTerm
