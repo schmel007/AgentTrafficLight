@@ -7,6 +7,13 @@ DIR="${AGENT_TRAFFIC_DIR:-$HOME/.claude/agent-traffic}"
 STATE="${1:-}"
 [ -z "$STATE" ] && exit 0
 KIND="${2:-claude}"
+
+# Nested codex runs spawned inside a Claude Code session (review helpers etc.) inherit
+# the tab's ITERM_SESSION_ID and would steal the tab row from the visible Claude session.
+if [ "$KIND" = "codex" ] && { [ -n "${CLAUDECODE:-}" ] || [ -n "${CLAUDE_CODE_ENTRYPOINT:-}" ]; }; then
+  exit 0
+fi
+
 mkdir -p "$DIR"
 
 PAYLOAD="$(cat 2>/dev/null || true)"

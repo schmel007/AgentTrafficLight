@@ -30,7 +30,8 @@ echo '{"session_id":"a\"b"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=7 sh "
 jq -e '.session_id=="a\"b" and .state=="working"' "$TMP/a\"b.json" >/dev/null || fail "special character in SID broke JSON"
 
 # 6) codex agent kind in an iTerm tab
-echo '{"session_id":"cx-1"}' | ITERM_SESSION_ID="w0t1:GUID-C" AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=5 sh "$SCRIPT" working codex
+echo '{"session_id":"cx-1"}' | ITERM_SESSION_ID="w0t1:GUID-C" CLAUDECODE= CLAUDE_CODE_ENTRYPOINT= \
+  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=5 sh "$SCRIPT" working codex
 jq -e '.agent=="codex" and .iterm=="w0t1:GUID-C"' "$TMP/cx-1.json" >/dev/null || fail "agent=codex not written"
 
 # 7) no session_id and no AGENT_TRAFFIC_SID → pid-<pid> key (no "unknown" collision)
@@ -39,9 +40,16 @@ printf '{}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=4242 sh "$SCRIPT" worki
 jq -e '.session_id=="pid-4242" and .agent=="claude"' "$TMP/pid-4242.json" >/dev/null || fail "pid-fallback content is wrong"
 
 # 8) Codex Desktop without iTerm must not reach the counter and must remove the old record
-echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID="w0t1:GUID-D" AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" working codex
+echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID="w0t1:GUID-D" CLAUDECODE= CLAUDE_CODE_ENTRYPOINT= \
+  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" working codex
 [ -f "$TMP/cx-desktop.json" ] || fail "codex desktop fixture not created"
-echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID= AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" done codex
+echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID= CLAUDECODE= CLAUDE_CODE_ENTRYPOINT= \
+  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" done codex
 [ -f "$TMP/cx-desktop.json" ] && fail "codex without ITERM_SESSION_ID did not delete the old record" || true
+
+# 9) codex nested inside a Claude Code session must be ignored entirely
+echo '{"session_id":"cx-nested"}' | ITERM_SESSION_ID="w0t1:GUID-E" CLAUDE_CODE_ENTRYPOINT=cli CLAUDECODE=1 \
+  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=8 sh "$SCRIPT" working codex
+[ -f "$TMP/cx-nested.json" ] && fail "nested codex must not write a status file" || true
 
 echo "ALL PASS"
