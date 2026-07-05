@@ -75,16 +75,57 @@ xcodebuild build -project AgentTrafficLight/AgentTrafficLight.xcodeproj -scheme 
 ```
 
 App Sandbox выключен намеренно (`ENABLE_APP_SANDBOX=NO`) — нужен доступ к `~/.claude/`.
-Локальная утилита, подпись Apple Development, не для App Store. `LSUIElement=YES` —
-только строка меню, без Dock. Шаблонный UITest `testLaunchPerformance` флейкует (метрики
-запуска) — для верификации гонять `-only-testing:AgentTrafficLightTests`.
+Основной путь распространения — Developer ID + notarized direct download, не Mac App Store.
+`LSUIElement=YES` — только строка меню, без Dock. Шаблонный UITest `testLaunchPerformance`
+флейкует (метрики запуска) — для верификации гонять `-only-testing:AgentTrafficLightTests`.
 
-## Автозапуск
+## Релиз вне App Store
 
-`AgentTrafficLight.app` → `/Applications/Agent Signals.app`, затем Системные настройки →
-Основные → Объекты входа → добавить приложение.
+Нужны Apple Developer Program, сертификат `Developer ID Application` в Keychain и профиль
+notarytool:
 
-**Первый клик «Focus»** / опрос имён вкладок запросит разрешение macOS на управление
+```bash
+xcrun notarytool store-credentials AgentSignalsNotary \
+  --apple-id "APPLE_ID_EMAIL" \
+  --team-id "88HMCU8P46" \
+  --password "APP_SPECIFIC_PASSWORD"
+```
+
+Проверка готовности машины:
+
+```bash
+scripts/release.sh --preflight
+```
+
+`--preflight` проверяет Developer ID certificate и сохранённый профиль notarytool. Если
+профиля нет, создай его командой выше.
+
+Сборка, Developer ID export, notarization, stapling и финальный zip:
+
+```bash
+scripts/release.sh
+```
+
+Результат: `dist/AgentSignals.zip`. В сборке включён Hardened Runtime и entitlement
+`com.apple.security.automation.apple-events`; при первом доступе к iTerm macOS попросит
+разрешение Automation.
+
+## Установка
+
+Пользовательский релиз:
+
+1. Распаковать `dist/AgentSignals.zip`.
+2. Перенести `Agent Signals.app` в `/Applications`.
+3. Открыть приложение.
+
+Локальный development-build:
+
+`AgentTrafficLight.app` → `/Applications/Agent Signals.app`.
+
+Автозапуск: Системные настройки → Основные → Объекты входа → добавить
+`/Applications/Agent Signals.app`.
+
+Первый клик `Focus` / опрос имён вкладок запросит разрешение macOS на управление
 iTerm (Конфиденциальность → Автоматизация) — это нужно один раз.
 
 ## Известные ограничения
@@ -107,6 +148,8 @@ iTerm (Конфиденциальность → Автоматизация) — 
 
 ```
 hooks/agent-status.sh            producer-скрипт + тест
+scripts/release.sh               Developer ID archive/export/notarization/stapling
+exportOptions.plist              настройки Xcode export для Developer ID
 docs/PROJECT_MEMORY.md           актуальная проектная память: контракты, ограничения, проверки
 AgentTrafficLight/               Xcode-проект
   AgentTrafficLight/
