@@ -4,11 +4,12 @@
 
 # Agent Signals
 
-I built Agent Signals because terminal notifications are easy to miss while I am deep
-in work. When an AI coding agent waits for input, approval, or a quick review, every
-missed prompt becomes idle time. Agent Signals keeps a small traffic light in the macOS
-menu bar, so I can always see which agent is working, which one has finished, and which
-one needs my attention.
+If you, like me, work with Claude Code and Codex agents in iTerm, you'll find this app
+useful. I built Agent Signals because terminal notifications are easy to miss while I am
+deep in work (on calls, in meetings, etc.). When an AI coding agent waits for input,
+approval, or a quick review, almost every missed prompt becomes idle time. Agent Signals
+keeps a small traffic light in the macOS menu bar, so I can always see which agent is
+working, which one has finished, and which one needs my attention.
 
 <p align="center">
   <img src="docs/assets/agent-signals-menu.png" width="590" alt="Agent Signals menu showing a finished Claude Code session and a working Codex session">
