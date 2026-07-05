@@ -37,8 +37,13 @@ Codex Desktop is intentionally ignored: it is not an iTerm tab and does not expo
 
 ## Install
 
+This is the only section most users need.
+
 Download a notarized `AgentSignals.zip` release, unzip it, move `Agent Signals.app` to
 `/Applications`, then open it.
+
+You do not need Xcode, Apple Developer Program membership, Developer ID certificates, or
+notarization credentials to install and use a published release.
 
 On first focus or tab-name refresh, macOS asks for Automation permission to control
 iTerm. Allow it in System Settings → Privacy & Security → Automation.
@@ -97,6 +102,9 @@ App Sandbox is intentionally disabled because the app reads hook output under
 Distribution is via Developer ID notarized direct download, not the Mac App Store.
 
 ## Release
+
+This section is for maintainers who build and publish a signed release. It is not needed
+to install Agent Signals on a Mac.
 
 The release script archives, exports with Developer ID, submits to Apple notarization,
 staples the ticket, validates with Gatekeeper, and creates `dist/AgentSignals.zip`.
