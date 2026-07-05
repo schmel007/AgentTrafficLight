@@ -41,7 +41,7 @@ jq -e '.session_id=="pid-4242" and .agent=="claude"' "$TMP/pid-4242.json" >/dev/
 # 8) Codex Desktop without iTerm must not reach the counter and must remove the old record
 echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID="w0t1:GUID-D" AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" working codex
 [ -f "$TMP/cx-desktop.json" ] || fail "codex desktop fixture not created"
-echo '{"session_id":"cx-desktop"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" done codex
+echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID= AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" done codex
 [ -f "$TMP/cx-desktop.json" ] && fail "codex without ITERM_SESSION_ID did not delete the old record" || true
 
 echo "ALL PASS"
