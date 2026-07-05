@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 - 2026-07-05
 
 - Fixed: nested Codex runs spawned inside a Claude Code session (review helpers etc.)
   no longer steal the tab row and flip its agent icon.
