@@ -69,8 +69,12 @@ private func displayLabel(_ cwd: String?) -> String {
 }
 
 /// Reduces session records into counters + the attention list.
-/// - `working`: `ts` older than `staleAfter` → delete (closes the PID-reuse phantom);
-///   otherwise live pid → 🟡, dead → ⚠️.
+/// - Any record with `ts` older than `staleAfter` → delete, regardless of state. A stale `ts`
+///   means the `pid` is no longer a trustworthy liveness proxy: the agent process may have
+///   exited and its pid been reused, or the hook recorded a shared long-lived Claude Code
+///   process (e.g. a background spare) that outlives the session. This closes the phantom
+///   where a finished/waiting session lingers because an unrelated pid stays alive.
+/// - `working`: live pid → 🟡, dead → ⚠️.
 /// - `waiting`/`done`: live pid → count + attention; dead → scheduled for deletion.
 /// `now` is injected for testability.
 func aggregate(_ records: [SessionRecord],
@@ -81,11 +85,13 @@ func aggregate(_ records: [SessionRecord],
     for r in records {
         let agent = displayAgent(r.agent)
         let label = displayLabel(r.cwd)
+        if now - TimeInterval(r.ts) > staleAfter {
+            result.idsToDelete.append(r.session_id)
+            continue
+        }
         switch r.state {
         case "working":
-            if now - TimeInterval(r.ts) > staleAfter {
-                result.idsToDelete.append(r.session_id)
-            } else if isAlive(r.pid) {
+            if isAlive(r.pid) {
                 result.counts.working += 1
                 result.attention.append(AttentionItem(id: r.session_id, icon: "🟡", agent: agent, label: label, iterm: r.iterm))
             } else {

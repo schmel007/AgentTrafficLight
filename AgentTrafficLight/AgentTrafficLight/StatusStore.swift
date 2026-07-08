@@ -47,7 +47,7 @@ final class StatusStore: ObservableObject {
         let deduped = dedupByTab(visible.kept)   // one row per tab
         for id in deduped.staleIds { deleteFile(id) }   // remove nested same-tab duplicates
         let result = aggregate(deduped.kept, now: now, isAlive: pidIsAlive)
-        for id in result.idsToDelete { deleteFile(id) }   // pid-dead done/waiting + working TTL
+        for id in result.idsToDelete { deleteFile(id) }   // pid-dead done/waiting + any state past TTL
         label = labelText(for: result.counts)
         rawAttention = result.attention
         attention = applyTabNames(rawAttention)

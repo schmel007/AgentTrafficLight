@@ -47,6 +47,40 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(r.idsToDelete, [])
     }
 
+    func test_stale_done_dropped_even_if_pid_alive() {
+        let r = aggregate([rec("a","done",1, ts: 0)], now: 10_000, staleAfter: 3600, isAlive: { _ in true })
+        XCTAssertEqual(r.counts.done, 0)
+        XCTAssertEqual(r.idsToDelete, ["a"])
+        XCTAssertEqual(r.attention, [])
+    }
+
+    func test_stale_waiting_dropped_even_if_pid_alive() {
+        let r = aggregate([rec("a","waiting",1, ts: 0)], now: 10_000, staleAfter: 3600, isAlive: { _ in true })
+        XCTAssertEqual(r.counts.waiting, 0)
+        XCTAssertEqual(r.idsToDelete, ["a"])
+        XCTAssertEqual(r.attention, [])
+    }
+
+    func test_fresh_done_alive_counts() {
+        let r = aggregate([rec("a","done",1, ts: 9_900)], now: 10_000, staleAfter: 3600, isAlive: { _ in true })
+        XCTAssertEqual(r.counts.done, 1)
+        XCTAssertEqual(r.idsToDelete, [])
+    }
+
+    func test_ts_exactly_staleAfter_is_kept() {
+        // now - ts == staleAfter is not past the strict `>` threshold → still evaluated by state
+        let r = aggregate([rec("a","done",1, ts: 6_400)], now: 10_000, staleAfter: 3600, isAlive: { _ in true })
+        XCTAssertEqual(r.counts.done, 1)
+        XCTAssertEqual(r.idsToDelete, [])
+    }
+
+    func test_future_ts_not_dropped() {
+        // clock skew: ts ahead of now → negative age, never treated as stale
+        let r = aggregate([rec("a","done",1, ts: 20_000)], now: 10_000, staleAfter: 3600, isAlive: { _ in true })
+        XCTAssertEqual(r.counts.done, 1)
+        XCTAssertEqual(r.idsToDelete, [])
+    }
+
     func test_attention_includes_all_sorted() {
         let recs = [rec("w","working",1), rec("d","done",2, cwd: "/x/proj"), rec("q","waiting",3, cwd: "/y/api")]
         let r = aggregate(recs, now: 0, isAlive: { _ in true })
