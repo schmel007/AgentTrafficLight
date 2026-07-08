@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.2 - 2026-07-08
+
+- Fixed: finished (🟢) and waiting (🔴) sessions no longer linger indefinitely when their
+  recorded process id is reused or belongs to a shared, long-lived Claude Code process
+  (such as a background spare) that outlives the session. Any session without hook
+  activity for more than one hour is now aged out, matching the existing behavior for
+  working (🟡) sessions.
+
 ## 1.1.1 - 2026-07-05
 
 - Fixed: manually set iTerm tab titles win again. 1.1.0 always used the live session
