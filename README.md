@@ -176,8 +176,8 @@ More details: [docs/RELEASE.md](docs/RELEASE.md).
   TTL, or internal cleanup.
 - iTerm session titles are best effort. If Automation is denied or iTerm is slow, the menu
   falls back to the project directory name.
-- Long-running single tools without hook activity for more than one hour may be dropped
-  from 🟡 to avoid stale process-id ghosts.
+- Any session without hook activity for more than one hour is dropped, whichever signal it
+  last showed (🟡/🔴/🟢), to avoid stale process-id ghosts.
 - Finished sessions stay visible while their terminal tab is still open.
 
 ## License

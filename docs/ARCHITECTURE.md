@@ -51,8 +51,10 @@ periodic refreshes, iTerm AppleScript calls, tab-title lookup, and tab focusing.
 | `done` | 🟢 | Process is alive and finished |
 | dead `working` | ⚠️ | The process died before sending `Stop` |
 
-Dead `done` and `waiting` records are deleted. `working` records older than one hour are
-deleted to reduce stale process-id reuse.
+Dead `done` and `waiting` records are deleted. Records older than one hour are deleted
+regardless of state: a stale timestamp means the `pid` is no longer a trustworthy liveness
+proxy — the process may have exited and had its id reused, or the hook recorded a shared,
+long-lived Claude Code process (e.g. a background spare) that outlives the session.
 
 ## iTerm Integration
 
