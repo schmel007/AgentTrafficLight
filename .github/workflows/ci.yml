@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -22,8 +22,8 @@ jobs:
 
       - name: Install verification tools
         run: |
-          brew list jq >/dev/null 2>&1 || brew install jq
-          brew list shellcheck >/dev/null 2>&1 || brew install shellcheck
+          command -v jq >/dev/null 2>&1 || brew install jq
+          command -v shellcheck >/dev/null 2>&1 || brew install shellcheck
 
       - name: Run complete verification gate
         run: scripts/verify.sh
