@@ -20,10 +20,31 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Install verification tools
+      - name: Install ShellCheck
         run: |
-          command -v jq >/dev/null 2>&1 || brew install jq
-          command -v shellcheck >/dev/null 2>&1 || brew install shellcheck
+          command -v jq >/dev/null 2>&1 || { echo "jq is missing from the runner" >&2; exit 1; }
+          case "$(uname -m)" in
+            arm64)
+              artifact="shellcheck-v0.11.0.darwin.aarch64.tar.gz"
+              checksum="339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f"
+              ;;
+            x86_64)
+              artifact="shellcheck-v0.11.0.darwin.x86_64.tar.gz"
+              checksum="c2c15e08df0e8fbc374c335b230a7ee958c313fa5714817a59aa59f1aa594f51"
+              ;;
+            *)
+              echo "Unsupported runner architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          archive="$RUNNER_TEMP/$artifact"
+          curl --proto '=https' --tlsv1.2 -fsSLo "$archive" \
+            "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/$artifact"
+          printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/bin"
+          install -m 755 "$RUNNER_TEMP/shellcheck-v0.11.0/shellcheck" "$RUNNER_TEMP/bin/shellcheck"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Run complete verification gate
         run: scripts/verify.sh
