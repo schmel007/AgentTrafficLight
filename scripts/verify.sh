@@ -41,7 +41,10 @@ xcodebuild test \
   -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED_DATA/tests" \
   -only-testing:AgentTrafficLightTests \
-  -only-testing:AgentTrafficLightUITests
+  -only-testing:AgentTrafficLightUITests \
+  CODE_SIGN_IDENTITY=- \
+  DEVELOPMENT_TEAM= \
+  CODE_SIGN_STYLE=Manual
 
 xcodebuild build \
   -project "$PROJECT" \
