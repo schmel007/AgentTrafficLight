@@ -22,13 +22,17 @@ final class StatusStore: ObservableObject {
     private var liveITermObservedAt: TimeInterval? = nil
     private var queryingNames = false
     private var lastNamesQuery: TimeInterval = 0
+    private var fileURLsBySessionId: [String: [URL]] = [:]
+    private let iTermQueriesEnabled: Bool
 
-    init(dir: URL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/agent-traffic", isDirectory: true)) {
-        self.dir = dir
+    init(dir: URL? = nil, startsTimer: Bool = true, iTermQueriesEnabled: Bool = true) {
+        self.dir = dir ?? defaultStatusDirectory()
+        self.iTermQueriesEnabled = iTermQueriesEnabled
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.refresh()
+        if startsTimer {
+            timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                self?.refresh()
+            }
         }
     }
 
@@ -40,14 +44,15 @@ final class StatusStore: ObservableObject {
         let now = Date().timeIntervalSince1970
         let load = loadRecords()
         let records = load.records
+        fileURLsBySessionId = load.fileURLsBySessionId
         let visible = filterVisibleTerminalRecords(records,
                                                    liveITermGUIDs: liveITermGUIDs,
                                                    liveITermObservedAt: liveITermObservedAt)
-        for id in visible.staleIds { deleteFile(id) }   // Codex Desktop + closed iTerm GUIDs
+        deleteFiles(for: visible.staleIds, using: load.fileURLsBySessionId)   // non-iTerm + closed tabs
         let deduped = dedupByTab(visible.kept)   // one row per tab
-        for id in deduped.staleIds { deleteFile(id) }   // remove nested same-tab duplicates
+        deleteFiles(for: deduped.staleIds, using: load.fileURLsBySessionId)   // nested same-tab duplicates
         let result = aggregate(deduped.kept, now: now, isAlive: pidIsAlive)
-        for id in result.idsToDelete { deleteFile(id) }   // pid-dead done/waiting + any state past TTL
+        deleteFiles(for: result.idsToDelete, using: load.fileURLsBySessionId)   // dead + past TTL
         label = labelText(for: result.counts)
         rawAttention = result.attention
         attention = applyTabNames(rawAttention)
@@ -68,13 +73,13 @@ final class StatusStore: ObservableObject {
             liveITermObservedAt: liveITermObservedAt,
             tabNameCount: tabNames.count
         )
-        if !records.isEmpty { maybeRefreshTabNames() }
+        if iTermQueriesEnabled, !records.isEmpty { maybeRefreshTabNames() }
     }
 
     /// Dismisses all currently shown rows (🔴/🟡/🟢/⚠️): deletes their files. Active sessions
     /// recreate the file on the next hook event; closed/stuck ones (Codex without SessionEnd) go away.
     func clearShown() {
-        for item in attention { deleteFile(item.id) }
+        deleteFiles(for: attention.map(\.id), using: fileURLsBySessionId)
         refresh()
     }
 
@@ -193,37 +198,70 @@ final class StatusStore: ObservableObject {
         return String(data: data, encoding: .utf8)
     }
 
-    private func deleteFile(_ sessionId: String) {
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(sessionId).json"))
+    private func deleteFiles(for sessionIds: [String], using filesBySessionId: [String: [URL]]) {
+        for sessionId in Set(sessionIds) {
+            for file in filesBySessionId[sessionId] ?? [] where isDirectStatusFile(file, in: dir) {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
     }
 
     private struct LoadRecordsResult {
         var records: [SessionRecord]
         var jsonFileCount: Int
         var invalidFileNames: [String]
+        var fileURLsBySessionId: [String: [URL]]
     }
 
     private func loadRecords() -> LoadRecordsResult {
+        guard isSafeStatusDirectory(dir) else {
+            return LoadRecordsResult(records: [], jsonFileCount: 0, invalidFileNames: [], fileURLsBySessionId: [:])
+        }
         guard let files = try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil) else {
-            return LoadRecordsResult(records: [], jsonFileCount: 0, invalidFileNames: [])
+            at: dir, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]) else {
+            return LoadRecordsResult(records: [], jsonFileCount: 0, invalidFileNames: [], fileURLsBySessionId: [:])
         }
         let decoder = JSONDecoder()
         let jsonFiles = files.filter { $0.pathExtension == "json" }
         var records: [SessionRecord] = []
         var invalidFileNames: [String] = []
+        var filesBySessionId: [String: [URL]] = [:]
         for file in jsonFiles {
-            guard let data = try? Data(contentsOf: file),
+            let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard isDirectStatusFile(file, in: dir),
+                  values?.isRegularFile == true,
+                  values?.isSymbolicLink != true,
+                  let data = try? Data(contentsOf: file),
                   let record = try? decoder.decode(SessionRecord.self, from: data) else {
                 invalidFileNames.append(file.lastPathComponent)
                 continue
             }
             records.append(record)
+            filesBySessionId[record.session_id, default: []].append(file)
         }
         return LoadRecordsResult(records: records,
                                  jsonFileCount: jsonFiles.count,
-                                 invalidFileNames: invalidFileNames)
+                                 invalidFileNames: invalidFileNames,
+                                 fileURLsBySessionId: filesBySessionId)
     }
+}
+
+func defaultStatusDirectory(environment: [String: String] = ProcessInfo.processInfo.environment,
+                            homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+    if let override = environment["AGENT_TRAFFIC_DIR"], !override.isEmpty {
+        return URL(fileURLWithPath: override, isDirectory: true)
+    }
+    return homeDirectory.appendingPathComponent(".claude/agent-traffic", isDirectory: true)
+}
+
+func isDirectStatusFile(_ file: URL, in directory: URL) -> Bool {
+    guard file.pathExtension == "json" else { return false }
+    return file.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL
+}
+
+func isSafeStatusDirectory(_ directory: URL) -> Bool {
+    let values = try? directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+    return values?.isDirectory == true && values?.isSymbolicLink != true
 }
 
 func parseITermTabTitleMap(_ output: String) -> [String: String] {

@@ -21,3 +21,14 @@ Agent Signals is a local macOS menu bar app. It:
 The app is intentionally not sandboxed because it needs access to local hook output and
 iTerm Automation. Public builds should be signed with Developer ID, notarized, stapled,
 and verified with Gatekeeper.
+
+Status filenames never interpolate untrusted session ids containing path separators. Both
+producer and consumer reject a symbolic-link status directory. The consumer also ignores
+symbolic-link records and deletes only regular JSON files it enumerated directly inside the
+status directory. Hook output is private to the current user (`0700` directory, `0600`
+records).
+
+The public installer merges only Agent Signals handlers into existing Claude Code and Codex
+JSON configuration. It preserves unrelated hooks and writes a backup before replacing an
+existing configuration file. Codex users must review and trust new hook definitions through
+`/hooks` before Codex runs them.

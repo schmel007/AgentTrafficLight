@@ -1,43 +1,32 @@
-//
-//  AgentTrafficLightUITests.swift
-//  AgentTrafficLightUITests
-//
-//  Created by Vil Gabdullin on 29/06/2026.
-//
-
 import XCTest
 
 final class AgentTrafficLightUITests: XCTestCase {
-
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testMenuBarApplicationLaunchesWithoutOpeningAWindow() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["AGENT_TRAFFIC_DIR"] = temporaryStatusDirectory()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        waitUntilRunning(app)
+        XCTAssertNotEqual(app.state, .notRunning)
+        XCTAssertEqual(app.windows.count, 0, "A menu bar utility must not open a regular window on launch")
+    }
+
+    private func temporaryStatusDirectory() -> String {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-signals-ui-\(UUID().uuidString)", isDirectory: true)
+            .path
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+    private func waitUntilRunning(_ app: XCUIApplication) {
+        let deadline = Date().addingTimeInterval(5)
+        while app.state == .notRunning && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
     }
 }

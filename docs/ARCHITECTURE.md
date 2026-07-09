@@ -22,10 +22,13 @@ The script records:
 - `iterm`
 
 If a payload does not contain a session id, the script falls back to `AGENT_TRAFFIC_SID`
-and then `pid-<pid>`. Files are written atomically through a temporary file and `mv`.
+and then `pid-<pid>`. Filename-safe ids remain readable; unexpected ids are hashed before
+being used as filenames. Files are written atomically through a unique same-directory
+temporary file and `mv`. The directory mode is `0700` and record mode is `0600`.
+The producer rejects a status directory that is a symbolic link.
 
-Codex events without `ITERM_SESSION_ID` are treated as desktop or non-iTerm context and
-are removed instead of counted.
+Events from either agent without `ITERM_SESSION_ID` are treated as desktop or non-iTerm
+context and are removed instead of counted.
 
 ## Consumer
 
@@ -41,6 +44,9 @@ Core logic lives in [Aggregator.swift](../AgentTrafficLight/AgentTrafficLight/Ag
 
 [StatusStore.swift](../AgentTrafficLight/AgentTrafficLight/StatusStore.swift) handles file IO,
 periodic refreshes, iTerm AppleScript calls, tab-title lookup, and tab focusing.
+It rejects a symbolic-link status directory, reads only regular direct-child JSON files, and
+deletes the exact files discovered during the same refresh. JSON contents can never select an
+arbitrary deletion path.
 
 ## State Semantics
 
@@ -67,6 +73,10 @@ The app uses AppleScript through `/usr/bin/osascript` to:
 The iTerm query is throttled and guarded by a timeout. If Automation is denied or iTerm
 does not respond, the app falls back to project directory names and avoids destructive
 cleanup based on unavailable iTerm data.
+
+Hook timestamps have one-second precision. Records from the same second in which an iTerm
+snapshot started are retained until the next snapshot, preventing a newly created session
+from being mistaken for a closed tab.
 
 ## Distribution Posture
 

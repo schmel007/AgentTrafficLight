@@ -53,7 +53,7 @@ fallback), and focuses the tab when clicked.
 
 ## Requirements
 
-- macOS
+- macOS 13 or later
 - iTerm2
 - Claude Code and/or Codex terminal sessions
 - `jq` for the hook script
@@ -64,11 +64,20 @@ Codex Desktop is intentionally ignored: it is not an iTerm tab and does not expo
 
 ## Install
 
-This is the only section most users need.
-
 Download the latest notarized `AgentSignals.zip` from
 [GitHub Releases](https://github.com/schmel007/AgentTrafficLight/releases/latest), unzip
-it, move `Agent Signals.app` to `/Applications`, then open it.
+it, and open the extracted `Agent Signals` folder.
+
+Install and verify the lifecycle hooks before launching the app:
+
+```bash
+./install-hooks.sh
+./install-hooks.sh --check
+```
+
+Move `Agent Signals.app` to `/Applications`, then open it. In Codex, run `/hooks`, review
+the new Agent Signals definitions, and trust them. Codex intentionally skips new command
+hooks until the user trusts their exact definitions.
 
 You do not need Xcode, Apple Developer Program membership, Developer ID certificates, or
 notarization credentials to install and use a published release.
@@ -87,7 +96,16 @@ Agent Signals reads JSON files from:
 ~/.claude/agent-traffic/
 ```
 
-The producer is [hooks/agent-status.sh](hooks/agent-status.sh). It accepts:
+The release includes the producer and an idempotent installer. From a source checkout, run:
+
+```bash
+scripts/install-hooks.sh
+scripts/install-hooks.sh --check
+```
+
+The installer merges Agent Signals entries into existing Claude Code and Codex configuration,
+preserves unrelated hooks, and creates backups before replacing existing JSON files. The
+producer is [hooks/agent-status.sh](hooks/agent-status.sh). It accepts:
 
 ```bash
 hooks/agent-status.sh <working|waiting|done|end> [claude|codex]
@@ -101,7 +119,8 @@ Expected hook mapping:
 | Claude Code | `PermissionRequest` | `waiting` |
 | Claude Code | `Stop` | `done` |
 | Claude Code | `SessionEnd` | `end` |
-| Codex terminal | `UserPromptSubmit` | `working` |
+| Codex terminal | `UserPromptSubmit`, `PostToolUse` | `working` |
+| Codex terminal | `PermissionRequest` | `waiting` |
 | Codex terminal | `Stop` | `done` |
 
 Each status file contains `session_id`, `state`, `pid`, `ts`, `agent`, `cwd`, and
@@ -110,17 +129,11 @@ Each status file contains `session_id`, `state`, `pid`, `ts`, `agent`, `cwd`, an
 ## Build
 
 ```bash
-sh hooks/test_agent-status.sh
-xcodebuild test \
-  -project AgentTrafficLight/AgentTrafficLight.xcodeproj \
-  -scheme AgentTrafficLight \
-  -destination 'platform=macOS' \
-  -only-testing:AgentTrafficLightTests
-xcodebuild build \
-  -project AgentTrafficLight/AgentTrafficLight.xcodeproj \
-  -scheme AgentTrafficLight \
-  -configuration Release
+scripts/verify.sh
 ```
+
+The verification gate covers hook and installer behavior, package contents, unit and UI
+tests, a universal Release build, and the macOS 13 deployment target.
 
 The internal Xcode target, scheme, executable, and bundle identifier still use
 `AgentTrafficLight`. The public app name is `Agent Signals`.
@@ -134,8 +147,9 @@ Distribution is via Developer ID notarized direct download, not the Mac App Stor
 This section is for maintainers who build and publish a signed release. It is not needed
 to install Agent Signals on a Mac.
 
-The release script archives, exports with Developer ID, submits to Apple notarization,
-staples the ticket, validates with Gatekeeper, and creates `dist/AgentSignals.zip`.
+The release script requires a clean, exactly tagged source tree, runs the full verification
+gate, archives and exports with Developer ID, submits to Apple notarization, staples the
+ticket, validates with Gatekeeper, and creates `dist/AgentSignals.zip`.
 
 First, store notarization credentials in Keychain:
 
@@ -171,7 +185,6 @@ More details: [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Known Limits
 
-- Codex terminal has no waiting/approval hook, so Codex shows only 🟡, 🟢, and ⚠️.
 - Codex terminal has no `SessionEnd`; closed Codex tabs are cleaned by iTerm GUID checks,
   TTL, or internal cleanup.
 - iTerm session titles are best effort. If Automation is denied or iTerm is slow, the menu

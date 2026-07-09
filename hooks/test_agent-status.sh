@@ -1,55 +1,123 @@
 #!/bin/sh
 set -eu
+
 SCRIPT="$(dirname "$0")/agent-status.sh"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-fail() { echo "FAIL: $1"; exit 1; }
+ROOT="$(mktemp -d)"
+STATUS_DIR="$ROOT/status"
+trap 'rm -rf "$ROOT"' EXIT
 
-# 1) session_id from stdin, state working, agent defaults to claude, iterm from env
-echo '{"session_id":"sess-1","cwd":"/x/proj"}' | \
-  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=99999 ITERM_SESSION_ID="w0t1:GUID-A" sh "$SCRIPT" working
-F="$TMP/sess-1.json"
-[ -f "$F" ] || fail "file not created"
-jq -e '.state=="working" and .pid==99999 and .session_id=="sess-1" and .agent=="claude" and .cwd=="/x/proj" and .iterm=="w0t1:GUID-A" and (.ts|type=="number")' "$F" >/dev/null \
-  || fail "working content is wrong: $(cat "$F")"
+fail() {
+  echo "FAIL: $1" >&2
+  exit 1
+}
 
-# 2) waiting overwrites the same file
-echo '{"session_id":"sess-1"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=99999 sh "$SCRIPT" waiting
-jq -e '.state=="waiting"' "$F" >/dev/null || fail "waiting not written"
+record_for_sid() {
+  sid="$1"
+  find "$STATUS_DIR" -maxdepth 1 -type f -name '*.json' -exec jq -e --arg sid "$sid" 'select(.session_id == $sid)' {} \; -print | tail -n 1
+}
 
-# 3) end deletes the file
-echo '{"session_id":"sess-1"}' | AGENT_TRAFFIC_DIR="$TMP" sh "$SCRIPT" end
-[ -f "$F" ] && fail "end did not delete the file" || true
+assert_mode() {
+  expected="$1"
+  path="$2"
+  actual="$(stat -f '%Lp' "$path")"
+  [ "$actual" = "$expected" ] || fail "mode for $path is $actual, expected $expected"
+}
 
-# 4) fallback to AGENT_TRAFFIC_SID when stdin is empty
-printf '' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_SID=sess-2 AGENT_TRAFFIC_PID=1 sh "$SCRIPT" done
-jq -e '.state=="done" and .session_id=="sess-2"' "$TMP/sess-2.json" >/dev/null || fail "SID fallback did not work"
+# 1) A normal Claude iTerm event creates a private, valid record.
+printf '%s' '{"session_id":"sess-1","cwd":"/x/proj"}' | \
+  AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID=99999 ITERM_SESSION_ID="w0t1:AAAA" \
+  sh "$SCRIPT" working
+F="$(record_for_sid sess-1)"
+[ -n "$F" ] || fail "record was not created"
+jq -e '.state == "working" and .pid == 99999 and .agent == "claude" and .cwd == "/x/proj" and .iterm == "w0t1:AAAA" and (.ts | type == "number")' "$F" >/dev/null \
+  || fail "working record has invalid content"
+assert_mode 700 "$STATUS_DIR"
+assert_mode 600 "$F"
 
-# 5) session_id with a special character does not break JSON
-echo '{"session_id":"a\"b"}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=7 sh "$SCRIPT" working
-jq -e '.session_id=="a\"b" and .state=="working"' "$TMP/a\"b.json" >/dev/null || fail "special character in SID broke JSON"
+# 2) A state transition atomically replaces the same record.
+printf '%s' '{"session_id":"sess-1"}' | \
+  AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID=99999 ITERM_SESSION_ID="w0t1:AAAA" \
+  sh "$SCRIPT" waiting
+[ "$(record_for_sid sess-1)" = "$F" ] || fail "safe session id changed storage file"
+jq -e '.state == "waiting"' "$F" >/dev/null || fail "waiting state was not written"
 
-# 6) codex agent kind in an iTerm tab
-echo '{"session_id":"cx-1"}' | ITERM_SESSION_ID="w0t1:GUID-C" CLAUDECODE= CLAUDE_CODE_ENTRYPOINT= \
-  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=5 sh "$SCRIPT" working codex
-jq -e '.agent=="codex" and .iterm=="w0t1:GUID-C"' "$TMP/cx-1.json" >/dev/null || fail "agent=codex not written"
+# 3) Session end removes the record.
+printf '%s' '{"session_id":"sess-1"}' | AGENT_TRAFFIC_DIR="$STATUS_DIR" sh "$SCRIPT" end
+[ -n "$(record_for_sid sess-1)" ] && fail "end did not remove the record"
 
-# 7) no session_id and no AGENT_TRAFFIC_SID → pid-<pid> key (no "unknown" collision)
-printf '{}' | AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=4242 sh "$SCRIPT" working
-[ -f "$TMP/pid-4242.json" ] || fail "pid-fallback key not created"
-jq -e '.session_id=="pid-4242" and .agent=="claude"' "$TMP/pid-4242.json" >/dev/null || fail "pid-fallback content is wrong"
+# 4) Fallback ids remain deterministic.
+printf '' | AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_SID=sess-2 AGENT_TRAFFIC_PID=1 \
+  ITERM_SESSION_ID="w0t1:BBBB" sh "$SCRIPT" 'done'
+jq -e '.state == "done" and .session_id == "sess-2"' "$(record_for_sid sess-2)" >/dev/null \
+  || fail "AGENT_TRAFFIC_SID fallback failed"
+printf '{}' | AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID=4242 \
+  ITERM_SESSION_ID="w0t1:CCCC" sh "$SCRIPT" working
+[ -n "$(record_for_sid pid-4242)" ] || fail "pid fallback was not created"
 
-# 8) Codex Desktop without iTerm must not reach the counter and must remove the old record
-echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID="w0t1:GUID-D" CLAUDECODE= CLAUDE_CODE_ENTRYPOINT= \
-  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" working codex
-[ -f "$TMP/cx-desktop.json" ] || fail "codex desktop fixture not created"
-echo '{"session_id":"cx-desktop"}' | ITERM_SESSION_ID= CLAUDECODE= CLAUDE_CODE_ENTRYPOINT= \
-  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=6 sh "$SCRIPT" done codex
-[ -f "$TMP/cx-desktop.json" ] && fail "codex without ITERM_SESSION_ID did not delete the old record" || true
+# 5) Untrusted session ids are hashed and cannot escape the directory.
+printf '%s' '{"session_id":"../escaped","cwd":"/tmp"}' | \
+  AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID=7 ITERM_SESSION_ID="w0t1:DDDD" \
+  sh "$SCRIPT" working
+ESCAPED="$(record_for_sid ../escaped)"
+[ -n "$ESCAPED" ] || fail "hashed traversal id was not stored"
+[ "$(dirname "$ESCAPED")" = "$STATUS_DIR" ] || fail "traversal id escaped status directory"
+[ ! -e "$ROOT/escaped.json" ] || fail "traversal id wrote outside status directory"
+case "$(basename "$ESCAPED")" in
+  session-*.json) ;;
+  *) fail "unsafe session id was not hashed" ;;
+esac
 
-# 9) codex nested inside a Claude Code session must be ignored entirely
-echo '{"session_id":"cx-nested"}' | ITERM_SESSION_ID="w0t1:GUID-E" CLAUDE_CODE_ENTRYPOINT=cli CLAUDECODE=1 \
-  AGENT_TRAFFIC_DIR="$TMP" AGENT_TRAFFIC_PID=8 sh "$SCRIPT" working codex
-[ -f "$TMP/cx-nested.json" ] && fail "nested codex must not write a status file" || true
+# 6) Non-iTerm events from either agent are removed.
+for kind in claude codex; do
+  sid="outside-$kind"
+  printf '{"session_id":"%s"}' "$sid" | AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID=6 \
+    ITERM_SESSION_ID="w0t1:EEEE" CLAUDECODE='' CLAUDE_CODE_ENTRYPOINT='' sh "$SCRIPT" working "$kind"
+  [ -n "$(record_for_sid "$sid")" ] || fail "$kind fixture was not created"
+  printf '{"session_id":"%s"}' "$sid" | AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID=6 \
+    ITERM_SESSION_ID='' CLAUDECODE='' CLAUDE_CODE_ENTRYPOINT='' sh "$SCRIPT" 'done' "$kind"
+  [ -z "$(record_for_sid "$sid")" ] || fail "$kind non-iTerm event was not removed"
+done
+
+# 7) Nested Codex runs inside Claude Code are ignored.
+printf '%s' '{"session_id":"cx-nested"}' | AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID=8 \
+  ITERM_SESSION_ID="w0t1:FFFF" CLAUDE_CODE_ENTRYPOINT=cli CLAUDECODE=1 \
+  sh "$SCRIPT" working codex
+[ -z "$(record_for_sid cx-nested)" ] || fail "nested Codex event wrote a record"
+
+# 8) Invalid configuration fails without creating files; malformed pids become zero.
+if printf '{}' | AGENT_TRAFFIC_DIR="$STATUS_DIR" ITERM_SESSION_ID="w0t1:AAAA" sh "$SCRIPT" invalid 2>/dev/null; then
+  fail "invalid state succeeded"
+fi
+if printf '{}' | AGENT_TRAFFIC_DIR="$STATUS_DIR" ITERM_SESSION_ID="w0t1:AAAA" sh "$SCRIPT" working invalid 2>/dev/null; then
+  fail "invalid agent kind succeeded"
+fi
+printf '%s' '{"session_id":"bad-pid"}' | AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID=not-a-number \
+  ITERM_SESSION_ID="w0t1:AAAA" sh "$SCRIPT" working
+jq -e '.pid == 0' "$(record_for_sid bad-pid)" >/dev/null || fail "malformed pid was not normalized"
+
+# 9) Concurrent events never expose partial JSON or shared temp files.
+i=0
+while [ "$i" -lt 20 ]; do
+  printf '%s' '{"session_id":"concurrent"}' | AGENT_TRAFFIC_DIR="$STATUS_DIR" AGENT_TRAFFIC_PID="$i" \
+    ITERM_SESSION_ID="w0t1:ABCD" sh "$SCRIPT" working &
+  i=$((i + 1))
+done
+wait
+CONCURRENT="$(record_for_sid concurrent)"
+jq -e '.session_id == "concurrent" and .state == "working"' "$CONCURRENT" >/dev/null \
+  || fail "concurrent record is invalid"
+[ "$(find "$STATUS_DIR" -maxdepth 1 -name '.agent-signals.*' | wc -l | tr -d ' ')" = "0" ] \
+  || fail "temporary files leaked"
+
+# 10) A symbolic-link status directory is rejected without touching its target.
+SYMLINK_TARGET="$ROOT/symlink-target"
+SYMLINK_DIR="$ROOT/status-link"
+mkdir -p "$SYMLINK_TARGET"
+ln -s "$SYMLINK_TARGET" "$SYMLINK_DIR"
+if printf '%s' '{"session_id":"symlink-dir"}' | AGENT_TRAFFIC_DIR="$SYMLINK_DIR" \
+  AGENT_TRAFFIC_PID=9 ITERM_SESSION_ID="w0t1:ABCD" sh "$SCRIPT" working 2>/dev/null; then
+  fail "symbolic-link status directory was accepted"
+fi
+[ ! -e "$SYMLINK_TARGET/symlink-dir.json" ] || fail "symbolic-link target was modified"
 
 echo "ALL PASS"

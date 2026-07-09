@@ -201,21 +201,22 @@ struct TerminalFilterResult: Equatable {
 }
 
 /// Filter for the app's contract surface: the indicator counts iTerm tabs only.
-/// - Codex without a GUID is Codex Desktop / a non-iTerm context and must be removed.
-/// - If iTerm successfully returned the GUID list, older records with a missing GUID are
-///   treated as closed tabs. Records newer than the snapshot are kept until the next snapshot.
+/// - Any record without a valid GUID is a non-iTerm context and must be removed.
+/// - If iTerm successfully returned the GUID list, records older than the snapshot second with
+///   a missing GUID are treated as closed tabs. Same-second records are kept because hook
+///   timestamps have one-second precision and may have been written after the query started.
 func filterVisibleTerminalRecords(_ records: [SessionRecord],
                                   liveITermGUIDs: Set<String>? = nil,
                                   liveITermObservedAt: TimeInterval? = nil) -> TerminalFilterResult {
     var result = TerminalFilterResult()
     for r in records {
         let guid = itermGUID(r.iterm)
-        if r.agent == "codex", guid == nil {
+        if guid == nil {
             result.staleIds.append(r.session_id)
         } else if let liveITermGUIDs,
                   let liveITermObservedAt,
                   let guid,
-                  TimeInterval(r.ts) <= liveITermObservedAt,
+                  TimeInterval(r.ts) < floor(liveITermObservedAt),
                   !liveITermGUIDs.contains(guid) {
             result.staleIds.append(r.session_id)
         } else {

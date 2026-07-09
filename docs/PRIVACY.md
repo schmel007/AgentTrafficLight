@@ -32,8 +32,10 @@ installed app does not use that path.
 ## Storage
 
 Agent Signals reads and deletes only its status files under `~/.claude/agent-traffic/`.
-The hook script writes those files. Finished or stale records may be removed as part of
-normal cleanup.
+The installed hook at `~/.local/share/agent-signals/agent-status.sh` writes those files with
+user-only permissions. Finished or stale records may be removed as part of normal cleanup.
+The installer also adds lifecycle hook definitions to local Claude Code and Codex settings;
+it does not upload those settings.
 
 ## Permissions
 

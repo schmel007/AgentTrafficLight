@@ -23,17 +23,13 @@ messages, images — is visible to everyone. Before every commit check that it c
 ## Build & test
 
 ```bash
-sh hooks/test_agent-status.sh
-xcodebuild test \
-  -project AgentTrafficLight/AgentTrafficLight.xcodeproj \
-  -scheme AgentTrafficLight \
-  -destination 'platform=macOS' \
-  -only-testing:AgentTrafficLightTests
+scripts/verify.sh
 ```
 
-Hook tests are hermetic: they clear `ITERM_SESSION_ID`, `CLAUDECODE`, and
-`CLAUDE_CODE_ENTRYPOINT` explicitly, so they pass from any environment, including
-shells spawned by coding agents.
+The gate covers hook, installer, packaging, unit, UI, universal Release, deployment-target,
+shell syntax, plist, and optional ShellCheck validation. Hook tests explicitly control
+`ITERM_SESSION_ID`, `CLAUDECODE`, and `CLAUDE_CODE_ENTRYPOINT`, so they are hermetic in shells
+spawned by coding agents.
 
 ## Behavioral invariants — do not "fix" without reading docs/ARCHITECTURE.md
 

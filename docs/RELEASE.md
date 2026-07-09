@@ -34,6 +34,13 @@ The preflight checks for:
 - a `Developer ID Application` certificate
 - a valid notarytool Keychain profile
 
+The full release additionally requires:
+
+- a clean working tree with no untracked files;
+- `HEAD` tagged exactly as `v<MARKETING_VERSION>`;
+- a matching dated entry in `CHANGELOG.md`;
+- a successful `scripts/verify.sh` run.
+
 ## Build And Notarize
 
 ```bash
@@ -42,24 +49,24 @@ scripts/release.sh
 
 The script:
 
-1. Archives the macOS app.
-2. Exports it with Developer ID signing.
-3. Renames the exported bundle to `Agent Signals.app`.
+1. Runs the complete verification gate.
+2. Creates a unique temporary build directory under `build/`.
+3. Archives and exports the macOS app with Developer ID signing.
 4. Verifies the code signature.
-5. Uploads the zip to Apple notarization.
-6. Staples the notarization ticket.
-7. Validates with `stapler` and `spctl`.
-8. Writes `dist/AgentSignals.zip`.
+5. Uploads the app-only archive to Apple notarization.
+6. Staples and validates the notarization ticket.
+7. Creates a public package containing the app, hook, installer, install guide, and license.
+8. Extracts that final package and validates its app again with `codesign`, `stapler`, and
+   `spctl`.
+9. Atomically writes `dist/AgentSignals.zip` without deleting the rest of `dist/`.
 
 ## Configuration
 
-Defaults:
+Configuration:
 
 ```bash
 TEAM_ID=88HMCU8P46
 NOTARY_PROFILE=AgentSignalsNotary
-BUILD_DIR=./build/release
-DIST_DIR=./dist
 ```
 
 Override when needed:
@@ -75,7 +82,7 @@ TMPDIR_RELEASE="/tmp/agent-signals-release-check"
 rm -rf "$TMPDIR_RELEASE"
 mkdir -p "$TMPDIR_RELEASE"
 ditto -x -k dist/AgentSignals.zip "$TMPDIR_RELEASE"
-APP="$TMPDIR_RELEASE/Agent Signals.app"
+APP="$TMPDIR_RELEASE/Agent Signals/Agent Signals.app"
 codesign --verify --deep --strict "$APP"
 xcrun stapler validate "$APP"
 spctl -a -vvv -t exec "$APP"

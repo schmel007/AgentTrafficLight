@@ -1,35 +1,23 @@
-//
-//  AgentTrafficLightUITestsLaunchTests.swift
-//  AgentTrafficLightUITests
-//
-//  Created by Vil Gabdullin on 29/06/2026.
-//
-
 import XCTest
 
 final class AgentTrafficLightUITestsLaunchTests: XCTestCase {
-
-    override class var runsForEachTargetApplicationUIConfiguration: Bool {
-        true
-    }
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
     @MainActor
-    func testLaunch() throws {
+    func testApplicationCanRelaunchAfterTermination() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["AGENT_TRAFFIC_DIR"] = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-signals-relaunch-\(UUID().uuidString)", isDirectory: true)
+            .path
+
         app.launch()
+        XCTAssertNotEqual(app.state, .notRunning)
+        app.terminate()
+        XCTAssertEqual(app.state, .notRunning)
 
-        // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
-
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "Launch Screen"
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        app.launch()
+        XCTAssertNotEqual(app.state, .notRunning)
     }
 }
