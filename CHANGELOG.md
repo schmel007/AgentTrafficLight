@@ -1,19 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.1.3 - 2026-07-13
 
-- Fixed: the public release package now includes an idempotent Claude Code and Codex hook
-  installer, the producer script, a quick-start guide, and the license.
-- Fixed: Codex permission and post-tool events now provide waiting-state parity and refresh
-  working-state liveness.
-- Fixed: non-iTerm Claude Code sessions no longer pollute the iTerm-only counter.
-- Fixed: same-second iTerm snapshot races no longer delete newly created session records.
-- Security: session ids cannot escape the status directory, symlink records are ignored,
-  and hook output uses user-only permissions.
-- Release: macOS 13 is now the minimum deployment target; builds are macOS-only and universal
-  for Apple silicon and Intel.
-- Release: destructive output-directory overrides were removed; releases now require a clean,
-  exactly tagged source tree and a complete automated verification gate.
+- Easier setup: the download now includes the app, a safe hook installer, and a quick-start
+  guide, so Agent Signals works without a source checkout.
+- More dependable signals: Codex approval waits and post-tool activity are reflected promptly,
+  while hardened session handling keeps stale or unrelated activity out of the menu.
+- Broader compatibility: the universal app now supports macOS 13 and later, with a stricter
+  release gate for a safer, more predictable install.
 
 ## 1.1.2 - 2026-07-08
 
